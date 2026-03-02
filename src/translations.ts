@@ -2,10 +2,14 @@ export const translations = {
   en: {
     nav: {
       home: "Home",
-      voterSlip: "Voter Slip",
+      voterSlip: "NID Verification",
       volunteer: "Volunteer",
       complaint: "Complaints",
-      admin: "Admin"
+      admin: "Admin",
+      privacy: "Privacy Policy",
+      terms: "Terms of Service",
+      contact: "Contact Us",
+      about: "About Us"
     },
     hero: {
       title: "Ward 29, DNCC Portal",
@@ -17,12 +21,15 @@ export const translations = {
       nidLabel: "NID Number",
       dobLabel: "Date of Birth",
       searchBtn: "Search Voter",
-      notFound: "Voter not found. Please check your NID and DOB.",
+      notFound: "Voter not found. Please ensure your NID number is correct (10 or 17 digits) and your Date of Birth matches your NID record exactly.",
       slipHeader: "Voter Information Slip",
       name: "Name",
       serial: "Serial No",
       center: "Polling Center",
       booth: "Booth No",
+      fatherName: "Father's Name",
+      motherName: "Mother's Name",
+      address: "Address",
       print: "Print Slip"
     },
     volunteer: {
@@ -68,10 +75,14 @@ export const translations = {
   bn: {
     nav: {
       home: "হোম",
-      voterSlip: "ভোটার স্লিপ",
+      voterSlip: "এনআইডি যাচাই",
       volunteer: "স্বেচ্ছাসেবক",
       complaint: "অভিযোগ",
-      admin: "অ্যাডমিন"
+      admin: "অ্যাডমিন",
+      privacy: "গোপনীয়তা নীতি",
+      terms: "ব্যবহারের শর্তাবলী",
+      contact: "যোগাযোগ",
+      about: "আমাদের সম্পর্কে"
     },
     hero: {
       title: "ওয়ার্ড ২৯, ডিএনসিসি পোর্টাল",
@@ -83,12 +94,15 @@ export const translations = {
       nidLabel: "এনআইডি নম্বর",
       dobLabel: "জন্ম তারিখ",
       searchBtn: "ভোটার খুঁজুন",
-      notFound: "ভোটার পাওয়া যায়নি। অনুগ্রহ করে এনআইডি এবং জন্ম তারিখ যাচাই করুন।",
+      notFound: "ভোটার পাওয়া যায়নি। আপনার এনআইডি নম্বর (১০ বা ১৭ ডিজিট) এবং জন্ম তারিখ আপনার এনআইডি রেকর্ডের সাথে মিলছে কিনা তা নিশ্চিত করুন।",
       slipHeader: "ভোটার তথ্য স্লিপ",
       name: "নাম",
       serial: "সিরিয়াল নম্বর",
       center: "ভোট কেন্দ্র",
       booth: "বুথ নম্বর",
+      fatherName: "পিতার নাম",
+      motherName: "মাতার নাম",
+      address: "ঠিকানা",
       print: "স্লিপ প্রিন্ট করুন"
     },
     volunteer: {

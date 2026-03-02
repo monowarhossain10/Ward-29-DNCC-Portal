@@ -13,6 +13,10 @@ db.exec(`
     dob TEXT,
     name_en TEXT,
     name_bn TEXT,
+    father_name TEXT,
+    mother_name TEXT,
+    address TEXT,
+    photo TEXT,
     serial_no TEXT,
     polling_center_en TEXT,
     polling_center_bn TEXT,
@@ -72,11 +76,11 @@ db.exec(`
 const voterCount = db.prepare("SELECT COUNT(*) as count FROM voters").get() as { count: number };
 if (voterCount.count === 0) {
   const insertVoter = db.prepare(`
-    INSERT INTO voters (nid, dob, name_en, name_bn, serial_no, polling_center_en, polling_center_bn, booth_no)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO voters (nid, dob, name_en, name_bn, father_name, mother_name, address, serial_no, polling_center_en, polling_center_bn, booth_no)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
-  insertVoter.run("1234567890", "1990-01-01", "John Doe", "জন ডো", "452", "Mohammadpur Govt. High School", "মোহাম্মদপুর সরকারি উচ্চ বিদ্যালয়", "04");
-  insertVoter.run("0987654321", "1985-05-15", "Jane Smith", "জেন স্মিথ", "128", "Kishalaya School", "কিশলয় স্কুল", "02");
+  insertVoter.run("1234567890", "1990-01-01", "John Doe", "জন ডো", "Robert Doe", "Mary Doe", "Mohammadpur, Dhaka", "452", "Mohammadpur Govt. High School", "মোহাম্মদপুর সরকারি উচ্চ বিদ্যালয়", "04");
+  insertVoter.run("0987654321", "1985-05-15", "Jane Smith", "জেন স্মিথ", "William Smith", "Sarah Smith", "Adabor, Dhaka", "128", "Kishalaya School", "কিশলয় স্কুল", "02");
 }
 
 // Seed default admin
@@ -127,19 +131,35 @@ async function startServer() {
           dob: person.dob,
           name_en: person.nameEn,
           name_bn: person.name,
-          serial_no: "N/A", // Not in Porichoi
-          polling_center_en: "Ward 29 Community Center", // Default for the ward
+          father_name: person.father,
+          mother_name: person.mother,
+          address: person.presentAddress,
+          photo: person.photo,
+          serial_no: "N/A",
+          polling_center_en: "Ward 29 Community Center",
           polling_center_bn: "ওয়ার্ড ২৯ কমিউনিটি সেন্টার",
-          booth_no: "01",
-          address: person.presentAddress
+          booth_no: "01"
         };
 
         // Optionally save to local DB for future searches
         try {
           db.prepare(`
-            INSERT OR REPLACE INTO voters (nid, dob, name_en, name_bn, serial_no, polling_center_en, polling_center_bn, booth_no)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-          `).run(voterInfo.nid, voterInfo.dob, voterInfo.name_en, voterInfo.name_bn, voterInfo.serial_no, voterInfo.polling_center_en, voterInfo.polling_center_bn, voterInfo.booth_no);
+            INSERT OR REPLACE INTO voters (nid, dob, name_en, name_bn, father_name, mother_name, address, photo, serial_no, polling_center_en, polling_center_bn, booth_no)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          `).run(
+            voterInfo.nid, 
+            voterInfo.dob, 
+            voterInfo.name_en, 
+            voterInfo.name_bn, 
+            voterInfo.father_name, 
+            voterInfo.mother_name, 
+            voterInfo.address, 
+            voterInfo.photo,
+            voterInfo.serial_no, 
+            voterInfo.polling_center_en, 
+            voterInfo.polling_center_bn, 
+            voterInfo.booth_no
+          );
         } catch (e) {
           console.error("Failed to cache voter info", e);
         }
@@ -151,6 +171,19 @@ async function startServer() {
     } catch (error) {
       console.error("Porichoi API Error:", error);
       res.status(500).json({ error: "External verification service error" });
+    }
+  });
+
+  app.post("/api/admin/voters/save", (req, res) => {
+    const { nid, dob, name_en, name_bn, father_name, mother_name, address, photo, serial_no, polling_center_en, polling_center_bn, booth_no } = req.body;
+    try {
+      db.prepare(`
+        INSERT OR REPLACE INTO voters (nid, dob, name_en, name_bn, father_name, mother_name, address, photo, serial_no, polling_center_en, polling_center_bn, booth_no)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(nid, dob, name_en, name_bn, father_name, mother_name, address, photo, serial_no, polling_center_en, polling_center_bn, booth_no);
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to save voter" });
     }
   });
 

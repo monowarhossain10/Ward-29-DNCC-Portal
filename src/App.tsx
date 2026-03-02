@@ -33,6 +33,10 @@ interface Voter {
   dob: string;
   name_en: string;
   name_bn: string;
+  father_name?: string;
+  mother_name?: string;
+  address?: string;
+  photo?: string;
   serial_no: string;
   polling_center_en: string;
   polling_center_bn: string;
@@ -133,6 +137,22 @@ export default function App() {
   const [newUser, setNewUser] = useState({ username: '', password: '', role: 'Viewer' as const });
   const [deleteConfirm, setDeleteConfirm] = useState<{ id: number, type: 'news' | 'gallery' | 'user' } | null>(null);
   const [shareToast, setShareToast] = useState<string | null>(null);
+
+  const StaticPage = ({ title, content }: { title: string, content: React.ReactNode }) => (
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -20 }}
+      className="max-w-4xl mx-auto py-12 px-4"
+    >
+      <div className="card p-8 md:p-12 space-y-6">
+        <h1 className="text-3xl font-black text-slate-900 border-b border-slate-100 pb-6">{title}</h1>
+        <div className="prose prose-slate max-w-none text-slate-600 leading-relaxed space-y-4">
+          {content}
+        </div>
+      </div>
+    </motion.div>
+  );
 
   const toggleLang = () => setLang(prev => prev === 'en' ? 'bn' : 'en');
 
@@ -372,9 +392,25 @@ export default function App() {
   }, [news, gallery]);
 
   return (
-    <div className={`min-h-screen flex flex-col ${lang === 'bn' ? 'bn' : ''}`}>
+    <div className={`min-h-screen flex flex-col ${lang === 'bn' ? 'bn' : ''} pb-16 md:pb-0`}>
+      {/* Mobile Header */}
+      <div className="md:hidden bg-emerald-600 text-white px-4 py-3 sticky top-0 z-[60] flex items-center justify-between no-print shadow-md">
+        <div className="flex items-center gap-2" onClick={() => setActiveTab('home')}>
+          <div className="w-8 h-8 bg-white text-emerald-600 rounded-lg flex items-center justify-center font-bold">29</div>
+          <span className="font-bold tracking-tight">Ward 29 Portal</span>
+        </div>
+        <div className="flex items-center gap-3">
+          <button onClick={toggleLang} className="text-[10px] font-black bg-white/20 px-2 py-1 rounded-md uppercase tracking-widest">
+            {lang === 'en' ? 'BN' : 'EN'}
+          </button>
+          <button onClick={() => setIsMenuOpen(!isMenuOpen)} className="text-white">
+            {isMenuOpen ? <X size={20} /> : <Menu size={20} />}
+          </button>
+        </div>
+      </div>
+
       {/* Navigation */}
-      <nav className="bg-white border-b border-slate-200 sticky top-0 z-50 no-print">
+      <nav className="hidden md:block bg-white border-b border-slate-200 sticky top-0 z-50 no-print">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16 items-center">
             <div className="flex items-center gap-2 cursor-pointer" onClick={() => setActiveTab('home')}>
@@ -525,38 +561,53 @@ export default function App() {
               exit={{ opacity: 0, x: -20 }}
               className="max-w-2xl mx-auto space-y-8"
             >
-              <div className="card p-8 no-print">
-                <h2 className="text-2xl font-bold mb-6 flex items-center gap-2">
-                  <Search className="text-emerald-600" /> {t.voter.title}
-                </h2>
-                <form onSubmit={handleVoterSearch} className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-semibold text-slate-700 mb-1">{t.voter.nidLabel}</label>
-                    <input
-                      type="text"
-                      required
-                      value={nid}
-                      onChange={(e) => setNid(e.target.value)}
-                      className="w-full px-4 py-2 rounded-lg border border-slate-200 focus:ring-2 focus:ring-emerald-500 outline-none"
-                      placeholder="e.g. 1234567890"
-                    />
+              <div className="card p-8 no-print border-t-4 border-emerald-600">
+                <div className="text-center mb-8">
+                  <div className="w-16 h-16 bg-emerald-50 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <ShieldCheck size={32} />
                   </div>
-                  <div>
-                    <label className="block text-sm font-semibold text-slate-700 mb-1">{t.voter.dobLabel}</label>
-                    <input
-                      type="date"
-                      required
-                      value={dob}
-                      onChange={(e) => setDob(e.target.value)}
-                      className="w-full px-4 py-2 rounded-lg border border-slate-200 focus:ring-2 focus:ring-emerald-500 outline-none"
-                    />
+                  <h2 className="text-2xl font-black text-slate-900">{t.voter.title}</h2>
+                  <p className="text-slate-500 text-sm mt-1">Official Verification System</p>
+                </div>
+                
+                <form onSubmit={handleVoterSearch} className="space-y-6">
+                  <div className="grid md:grid-cols-2 gap-6">
+                    <div className="space-y-2">
+                      <label className="block text-xs font-black text-slate-400 uppercase tracking-widest">{t.voter.nidLabel}</label>
+                      <input
+                        type="text"
+                        required
+                        value={nid}
+                        onChange={(e) => setNid(e.target.value)}
+                        className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-emerald-500 outline-none font-mono text-lg"
+                        placeholder="1234567890"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="block text-xs font-black text-slate-400 uppercase tracking-widest">{t.voter.dobLabel}</label>
+                      <input
+                        type="date"
+                        required
+                        value={dob}
+                        onChange={(e) => setDob(e.target.value)}
+                        className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-emerald-500 outline-none"
+                      />
+                    </div>
                   </div>
-                  <button type="submit" className="w-full btn-primary py-3">
+                  <button type="submit" className="w-full bg-emerald-600 text-white py-4 rounded-xl font-black uppercase tracking-widest hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-600/20 flex items-center justify-center gap-2">
+                    <Search size={20} />
                     {t.voter.searchBtn}
                   </button>
                 </form>
                 {voterError && (
-                  <p className="mt-4 text-red-600 text-sm font-medium bg-red-50 p-3 rounded-lg">{voterError}</p>
+                  <motion.div 
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="mt-6 flex items-center gap-3 text-red-600 text-sm font-bold bg-red-50 p-4 rounded-xl border border-red-100"
+                  >
+                    <AlertCircle size={18} />
+                    {voterError}
+                  </motion.div>
                 )}
               </div>
 
@@ -570,9 +621,16 @@ export default function App() {
                   <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-600/5 rounded-bl-full -mr-8 -mt-8" />
                   
                   <div className="flex justify-between items-start mb-8 relative">
-                    <div>
-                      <h3 className="text-2xl font-bold text-emerald-800">{t.voter.slipHeader}</h3>
-                      <p className="text-slate-500 font-bold">Ward 29, DNCC</p>
+                    <div className="flex gap-4">
+                      {voter.photo && (
+                        <div className="w-20 h-24 bg-slate-100 rounded-lg overflow-hidden border border-slate-200">
+                          <img src={voter.photo} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                        </div>
+                      )}
+                      <div>
+                        <h3 className="text-2xl font-bold text-emerald-800">{t.voter.slipHeader}</h3>
+                        <p className="text-slate-500 font-bold">Ward 29, DNCC</p>
+                      </div>
                     </div>
                     <div className="w-16 h-16 bg-slate-100 rounded-lg flex items-center justify-center">
                       <QrCode className="text-slate-400" size={40} />
@@ -585,21 +643,42 @@ export default function App() {
                       <p className="text-lg font-bold">{lang === 'bn' ? voter.name_bn : voter.name_en}</p>
                     </div>
                     <div>
-                      <p className="text-xs uppercase tracking-wider text-slate-400 font-bold mb-1">{t.voter.serial}</p>
-                      <p className="text-lg font-bold font-mono">{voter.serial_no}</p>
+                      <p className="text-xs uppercase tracking-wider text-slate-400 font-bold mb-1">NID</p>
+                      <p className="text-lg font-bold font-mono">{voter.nid}</p>
                     </div>
+                    {voter.father_name && (
+                      <div>
+                        <p className="text-xs uppercase tracking-wider text-slate-400 font-bold mb-1">{t.voter.fatherName}</p>
+                        <p className="text-sm font-bold">{voter.father_name}</p>
+                      </div>
+                    )}
+                    {voter.mother_name && (
+                      <div>
+                        <p className="text-xs uppercase tracking-wider text-slate-400 font-bold mb-1">{t.voter.motherName}</p>
+                        <p className="text-sm font-bold">{voter.mother_name}</p>
+                      </div>
+                    )}
                     <div className="col-span-2">
                       <p className="text-xs uppercase tracking-wider text-slate-400 font-bold mb-1">{t.voter.center}</p>
-                      <p className="text-lg font-bold">{lang === 'bn' ? voter.polling_center_bn : voter.polling_center_en}</p>
+                      <div className="space-y-1">
+                        <p className="text-lg font-bold text-slate-900">{voter.polling_center_en}</p>
+                        <p className="text-sm font-bold text-slate-600">{voter.polling_center_bn}</p>
+                      </div>
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase tracking-wider text-slate-400 font-bold mb-1">{t.voter.serial}</p>
+                      <p className="text-lg font-bold font-mono">{voter.serial_no}</p>
                     </div>
                     <div>
                       <p className="text-xs uppercase tracking-wider text-slate-400 font-bold mb-1">{t.voter.booth}</p>
                       <p className="text-lg font-bold font-mono">{voter.booth_no}</p>
                     </div>
-                    <div>
-                      <p className="text-xs uppercase tracking-wider text-slate-400 font-bold mb-1">NID</p>
-                      <p className="text-lg font-bold font-mono">{voter.nid}</p>
-                    </div>
+                    {voter.address && (
+                      <div className="col-span-2">
+                        <p className="text-xs uppercase tracking-wider text-slate-400 font-bold mb-1">{t.voter.address}</p>
+                        <p className="text-sm font-bold">{voter.address}</p>
+                      </div>
+                    )}
                   </div>
 
                   <div className="mt-8 pt-6 border-t border-dashed border-slate-200 flex justify-between items-center no-print">
@@ -629,16 +708,19 @@ export default function App() {
                                   </div>
                                   
                                   <div class="p-8 space-y-6">
-                                    <div class="flex justify-between items-start">
-                                      <div class="space-y-4">
-                                        <div>
-                                          <p class="text-[9px] uppercase text-slate-400 font-black tracking-widest">Voter Name</p>
-                                          <p class="text-lg font-black text-slate-900">${voter.name_en}</p>
-                                          <p class="text-sm font-bold text-slate-600">${voter.name_bn}</p>
-                                        </div>
-                                        <div>
-                                          <p class="text-[9px] uppercase text-slate-400 font-black tracking-widest">NID Number</p>
-                                          <p class="text-sm font-bold text-slate-900 font-mono">${voter.nid}</p>
+                                    <div class="flex justify-between items-start gap-4">
+                                      <div class="flex gap-4">
+                                        ${voter.photo ? `<div class="w-20 h-24 bg-slate-100 rounded-lg overflow-hidden border border-slate-200"><img src="${voter.photo}" class="w-full h-full object-cover"></div>` : ''}
+                                        <div class="space-y-4">
+                                          <div>
+                                            <p class="text-[9px] uppercase text-slate-400 font-black tracking-widest">Voter Name</p>
+                                            <p class="text-lg font-black text-slate-900">${voter.name_en}</p>
+                                            <p class="text-sm font-bold text-slate-600">${voter.name_bn}</p>
+                                          </div>
+                                          <div>
+                                            <p class="text-[9px] uppercase text-slate-400 font-black tracking-widest">NID Number</p>
+                                            <p class="text-sm font-bold text-slate-900 font-mono">${voter.nid}</p>
+                                          </div>
                                         </div>
                                       </div>
                                       <div class="w-24 h-24 bg-white p-1 border border-slate-100 rounded-xl shadow-sm">
@@ -647,20 +729,24 @@ export default function App() {
                                     </div>
 
                                     <div class="grid grid-cols-2 gap-6 border-t border-slate-100 pt-6">
-                                      <div>
-                                        <p class="text-[9px] uppercase text-slate-400 font-black tracking-widest">Serial Number</p>
-                                        <p class="text-sm font-bold text-slate-900 font-mono">${voter.serial_no}</p>
+                                      ${voter.father_name ? `<div><p class="text-[9px] uppercase text-slate-400 font-black tracking-widest">${t.voter.fatherName}</p><p class="text-xs font-bold text-slate-900">${voter.father_name}</p></div>` : ''}
+                                      ${voter.mother_name ? `<div><p class="text-[9px] uppercase text-slate-400 font-black tracking-widest">${t.voter.motherName}</p><p class="text-xs font-bold text-slate-900">${voter.mother_name}</p></div>` : ''}
+                                      <div class="col-span-2">
+                                        <p class="text-[9px] uppercase text-slate-400 font-black tracking-widest">${t.voter.center}</p>
+                                        <div class="space-y-1">
+                                          <p class="text-xs font-bold text-slate-900">${voter.polling_center_en}</p>
+                                          <p class="text-[10px] font-bold text-slate-600">${voter.polling_center_bn}</p>
+                                        </div>
                                       </div>
                                       <div>
-                                        <p class="text-[9px] uppercase text-slate-400 font-black tracking-widest">Booth Number</p>
-                                        <p class="text-sm font-bold text-slate-900 font-mono">${voter.booth_no}</p>
+                                        <p class="text-[9px] uppercase text-slate-400 font-black tracking-widest">${t.voter.serial}</p>
+                                        <p class="text-sm font-black text-emerald-600 font-mono">${voter.serial_no}</p>
                                       </div>
-                                    </div>
-
-                                    <div class="border-t border-slate-100 pt-6">
-                                      <p class="text-[9px] uppercase text-slate-400 font-black tracking-widest">Polling Center</p>
-                                      <p class="text-sm font-bold text-slate-900">${voter.polling_center_en}</p>
-                                      <p class="text-xs font-bold text-slate-600 mt-1">${voter.polling_center_bn}</p>
+                                      <div>
+                                        <p class="text-[9px] uppercase text-slate-400 font-black tracking-widest">${t.voter.booth}</p>
+                                        <p class="text-sm font-black text-emerald-600 font-mono">${voter.booth_no}</p>
+                                      </div>
+                                      ${voter.address ? `<div class="col-span-2"><p class="text-[9px] uppercase text-slate-400 font-black tracking-widest">${t.voter.address}</p><p class="text-[10px] font-bold text-slate-600">${voter.address}</p></div>` : ''}
                                     </div>
 
                                     <div class="bg-emerald-50 p-4 rounded-xl border border-emerald-100">
@@ -855,6 +941,88 @@ export default function App() {
                 )}
               </div>
             </motion.div>
+          )}
+
+          {activeTab === 'privacy' && (
+            <StaticPage 
+              title={t.nav.privacy} 
+              content={
+                <div className="space-y-6">
+                  <p>Your privacy is important to us. This Privacy Policy explains how Ward 29 DNCC Portal collects, uses, and protects your information.</p>
+                  <h2 className="text-xl font-bold text-slate-900">Information Collection</h2>
+                  <p>We collect information you provide directly to us, such as when you search for a voter slip, register as a volunteer, or submit a complaint. This may include your name, NID number, date of birth, phone number, and email address.</p>
+                  <h2 className="text-xl font-bold text-slate-900">Use of Information</h2>
+                  <p>We use the information we collect to provide, maintain, and improve our services, to process your requests, and to communicate with you.</p>
+                  <h2 className="text-xl font-bold text-slate-900">Data Protection</h2>
+                  <p>We implement a variety of security measures to maintain the safety of your personal information. Your NID data is processed securely and is only used for verification purposes.</p>
+                </div>
+              } 
+            />
+          )}
+
+          {activeTab === 'terms' && (
+            <StaticPage 
+              title={t.nav.terms} 
+              content={
+                <div className="space-y-6">
+                  <p>By accessing or using the Ward 29 DNCC Portal, you agree to be bound by these Terms of Service.</p>
+                  <h2 className="text-xl font-bold text-slate-900">Use of Service</h2>
+                  <p>You agree to use the portal only for lawful purposes and in a way that does not infringe the rights of, restrict, or inhibit anyone else's use and enjoyment of the portal.</p>
+                  <h2 className="text-xl font-bold text-slate-900">Voter Information</h2>
+                  <p>The voter information provided on this portal is for informational purposes only. Official voter information should be verified with the Bangladesh Election Commission.</p>
+                  <h2 className="text-xl font-bold text-slate-900">Limitation of Liability</h2>
+                  <p>Ward 29 DNCC will not be liable for any damages arising from the use of this portal.</p>
+                </div>
+              } 
+            />
+          )}
+
+          {activeTab === 'contact' && (
+            <StaticPage 
+              title={t.nav.contact} 
+              content={
+                <div className="space-y-6">
+                  <p>If you have any questions or need assistance, please feel free to contact us.</p>
+                  <div className="grid md:grid-cols-2 gap-8">
+                    <div className="space-y-4">
+                      <h2 className="text-xl font-bold text-slate-900">Office Address</h2>
+                      <p className="text-slate-600">
+                        Ward 29 Councillor Office<br />
+                        Mohammadpur, Dhaka-1207<br />
+                        Bangladesh
+                      </p>
+                    </div>
+                    <div className="space-y-4">
+                      <h2 className="text-xl font-bold text-slate-900">Contact Details</h2>
+                      <p className="text-slate-600">
+                        Phone: +880 1234-567890<br />
+                        Email: info@ward29dncc.gov.bd
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              } 
+            />
+          )}
+
+          {activeTab === 'about' && (
+            <StaticPage 
+              title={t.nav.about} 
+              content={
+                <div className="space-y-6">
+                  <p>Ward 29 DNCC Portal is a digital initiative to provide essential services and information to the residents of Ward 29, Mohammadpur, Dhaka North City Corporation.</p>
+                  <h2 className="text-xl font-bold text-slate-900">Our Mission</h2>
+                  <p>Our mission is to leverage technology to make civic services more accessible, transparent, and efficient for our citizens.</p>
+                  <h2 className="text-xl font-bold text-slate-900">What We Offer</h2>
+                  <ul className="list-disc pl-6 space-y-2">
+                    <li>Digital Voter Information Slips</li>
+                    <li>Volunteer Registration and Management</li>
+                    <li>Citizen Complaint Tracking System</li>
+                    <li>Latest News and Community Updates</li>
+                  </ul>
+                </div>
+              } 
+            />
           )}
 
           {activeTab === 'admin' && (
@@ -1361,12 +1529,45 @@ export default function App() {
           </div>
           <p className="text-sm">© {new Date().getFullYear()} Ward 29, Mohammadpur. All rights reserved.</p>
           <div className="flex justify-center gap-6 text-xs font-bold uppercase tracking-widest">
-            <a href="#" className="hover:text-white transition-colors">Privacy</a>
-            <a href="#" className="hover:text-white transition-colors">Terms</a>
-            <a href="#" className="hover:text-white transition-colors">Contact</a>
+            <button onClick={() => setActiveTab('privacy')} className="hover:text-white transition-colors">{t.nav.privacy}</button>
+            <button onClick={() => setActiveTab('terms')} className="hover:text-white transition-colors">{t.nav.terms}</button>
+            <button onClick={() => setActiveTab('contact')} className="hover:text-white transition-colors">{t.nav.contact}</button>
+            <button onClick={() => setActiveTab('about')} className="hover:text-white transition-colors">{t.nav.about}</button>
           </div>
         </div>
       </footer>
+
+      {/* Mobile Bottom Nav */}
+      <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-slate-100 px-6 py-3 flex justify-between items-center z-50 no-print">
+        <button 
+          onClick={() => setActiveTab('home')}
+          className={`flex flex-col items-center gap-1 ${activeTab === 'home' ? 'text-emerald-600' : 'text-slate-400'}`}
+        >
+          <Search size={20} />
+          <span className="text-[10px] font-bold uppercase tracking-tighter">Home</span>
+        </button>
+        <button 
+          onClick={() => setActiveTab('voterSlip')}
+          className={`flex flex-col items-center gap-1 ${activeTab === 'voterSlip' ? 'text-emerald-600' : 'text-slate-400'}`}
+        >
+          <ShieldCheck size={20} />
+          <span className="text-[10px] font-bold uppercase tracking-tighter">Verify</span>
+        </button>
+        <button 
+          onClick={() => setActiveTab('volunteer')}
+          className={`flex flex-col items-center gap-1 ${activeTab === 'volunteer' ? 'text-emerald-600' : 'text-slate-400'}`}
+        >
+          <UserPlus size={20} />
+          <span className="text-[10px] font-bold uppercase tracking-tighter">Vol</span>
+        </button>
+        <button 
+          onClick={() => setActiveTab('complaint')}
+          className={`flex flex-col items-center gap-1 ${activeTab === 'complaint' ? 'text-emerald-600' : 'text-slate-400'}`}
+        >
+          <MessageSquare size={20} />
+          <span className="text-[10px] font-bold uppercase tracking-tighter">Help</span>
+        </button>
+      </div>
 
       {/* Share Toast */}
       <AnimatePresence>
