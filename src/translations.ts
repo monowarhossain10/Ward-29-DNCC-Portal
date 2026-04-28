@@ -2,14 +2,20 @@ export const translations = {
   en: {
     nav: {
       home: "Home",
+      services: "Citizen Services",
       voterSlip: "NID Verification",
-      volunteer: "Volunteer",
-      complaint: "Complaints",
-      admin: "Admin",
-      privacy: "Privacy Policy",
-      terms: "Terms of Service",
+      birthVerify: "Birth Record Verification",
+      volunteer: "Volunteer Registration",
+      complaint: "File a Complaint",
+      community: "Community",
+      events: "Events & Campaigns",
+      news: "Latest News",
+      gallery: "Gallery",
+      support: "Support & About",
       contact: "Contact Us",
-      about: "About Us"
+      about: "About Us",
+      privacy: "Privacy Policy",
+      terms: "Terms of Service"
     },
     hero: {
       title: "Ward 29, DNCC Portal",
@@ -75,14 +81,20 @@ export const translations = {
   bn: {
     nav: {
       home: "হোম",
+      services: "নাগরিক সেবা",
       voterSlip: "এনআইডি যাচাই",
-      volunteer: "স্বেচ্ছাসেবক",
-      complaint: "অভিযোগ",
-      admin: "অ্যাডমিন",
-      privacy: "গোপনীয়তা নীতি",
-      terms: "ব্যবহারের শর্তাবলী",
+      birthVerify: "জন্ম নিবন্ধন যাচাই",
+      volunteer: "স্বেচ্ছাসেবক নিবন্ধন",
+      complaint: "অভিযোগ জমা দিন",
+      community: "কমিউনিটি",
+      events: "ইভেন্ট ও ক্যাম্পেইন",
+      news: "সর্বশেষ সংবাদ",
+      gallery: "গ্যালারি",
+      support: "সহায়তা ও তথ্য",
       contact: "যোগাযোগ",
-      about: "আমাদের সম্পর্কে"
+      about: "আমাদের সম্পর্কে",
+      privacy: "গোপনীয়তা নীতি",
+      terms: "ব্যবহারের শর্তাবলী"
     },
     hero: {
       title: "ওয়ার্ড ২৯, ডিএনসিসি পোর্টাল",

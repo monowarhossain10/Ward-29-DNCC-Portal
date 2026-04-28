@@ -17,10 +17,23 @@ import {
   Image as ImageIcon,
   Trash2,
   Plus,
+  Pencil,
   ExternalLink,
   ChevronRight,
   AlertCircle,
-  Share2
+  Share2,
+  Facebook,
+  Twitter,
+  MessageCircle,
+  Link2,
+  HelpCircle,
+  Sun,
+  Moon,
+  Info,
+  Shield,
+  FileText,
+  ChevronDown,
+  Mail
 } from 'lucide-react';
 import { translations } from './translations';
 import QRCode from 'qrcode';
@@ -83,6 +96,19 @@ interface GalleryItem {
   created_at: string;
 }
 
+interface EventItem {
+  id: number;
+  title_en: string;
+  title_bn: string;
+  description_en: string;
+  description_bn: string;
+  event_date: string;
+  location_en: string;
+  location_bn: string;
+  image: string;
+  created_at: string;
+}
+
 interface AdminUser {
   id: number;
   username: string;
@@ -100,6 +126,12 @@ export default function App() {
   const [dob, setDob] = useState('');
   const [voter, setVoter] = useState<Voter | null>(null);
   const [voterError, setVoterError] = useState('');
+
+  // Birth Registration State
+  const [birthRegId, setBirthRegId] = useState('');
+  const [birthDob, setBirthDob] = useState('');
+  const [birthData, setBirthData] = useState<any>(null);
+  const [birthError, setBirthError] = useState('');
 
   // Volunteer State
   const [volName, setVolName] = useState('');
@@ -123,20 +155,248 @@ export default function App() {
   const [adminUsername, setAdminUsername] = useState('');
   const [adminPassword, setAdminPassword] = useState('');
   const [adminLoginError, setAdminLoginError] = useState('');
-  const [adminSubTab, setAdminSubTab] = useState<'volunteers' | 'complaints' | 'news' | 'gallery' | 'users'>('volunteers');
+  const [adminSubTab, setAdminSubTab] = useState<'volunteers' | 'complaints' | 'news' | 'gallery' | 'events' | 'users'>('volunteers');
   const [volunteers, setVolunteers] = useState<Volunteer[]>([]);
   const [adminComplaints, setAdminComplaints] = useState<Complaint[]>([]);
   const [news, setNews] = useState<NewsItem[]>([]);
   const [gallery, setGallery] = useState<GalleryItem[]>([]);
+  const [events, setEvents] = useState<EventItem[]>([]);
   const [adminUsers, setAdminUsers] = useState<AdminUser[]>([]);
 
   // Admin Form States
   const [newNews, setNewNews] = useState({ title_en: '', title_bn: '', content_en: '', content_bn: '', image: '' });
+  const [editingNews, setEditingNews] = useState<NewsItem | null>(null);
   const [newGallery, setNewGallery] = useState({ caption_en: '', caption_bn: '', image: '' });
+  const [editingGallery, setEditingGallery] = useState<GalleryItem | null>(null);
+  const [newEvent, setNewEvent] = useState({ title_en: '', title_bn: '', description_en: '', description_bn: '', event_date: '', location_en: '', location_bn: '', image: '' });
+  const [editingEvent, setEditingEvent] = useState<EventItem | null>(null);
   const [editingComplaint, setEditingComplaint] = useState<{ id: number, status: string, admin_note: string } | null>(null);
   const [newUser, setNewUser] = useState({ username: '', password: '', role: 'Viewer' as const });
-  const [deleteConfirm, setDeleteConfirm] = useState<{ id: number, type: 'news' | 'gallery' | 'user' } | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<{ id: number, type: 'news' | 'gallery' | 'event' | 'user' } | null>(null);
   const [shareToast, setShareToast] = useState<string | null>(null);
+
+  // New States
+  const [darkMode, setDarkMode] = useState(false);
+  const [expandedNews, setExpandedNews] = useState<Set<number>>(new Set());
+
+  // Volunteer Search/Filter State
+  const [volSearch, setVolSearch] = useState('');
+  const [volStatusFilter, setVolStatusFilter] = useState<'all' | 'pending' | 'approved'>('all');
+
+  const CountdownTimer = () => {
+    const [timeLeft, setTimeLeft] = useState({ days: 0, hours: 0, minutes: 0 });
+
+    useEffect(() => {
+      const targetDate = new Date('2024-12-01T08:00:00');
+      const timer = setInterval(() => {
+        const now = new Date();
+        const difference = targetDate.getTime() - now.getTime();
+        
+        if (difference <= 0) {
+          clearInterval(timer);
+          return;
+        }
+
+        setTimeLeft({
+          days: Math.floor(difference / (1000 * 60 * 60 * 24)),
+          hours: Math.floor((difference / (1000 * 60 * 60)) % 24),
+          minutes: Math.floor((difference / 1000 / 60) % 60)
+        });
+      }, 1000);
+      return () => clearInterval(timer);
+    }, []);
+
+    return (
+      <div className="grid grid-cols-3 gap-2 mt-4">
+        {[
+          { label: lang === 'bn' ? 'দিন' : 'Days', value: timeLeft.days },
+          { label: lang === 'bn' ? 'ঘণ্টা' : 'Hours', value: timeLeft.hours },
+          { label: lang === 'bn' ? 'মিনিট' : 'Mins', value: timeLeft.minutes }
+        ].map(item => (
+          <div key={item.label} className="bg-emerald-600 text-white rounded-lg p-2 text-center">
+            <div className="text-lg font-black">{item.value.toString().padStart(2, '0')}</div>
+            <div className="text-[8px] font-bold uppercase tracking-widest opacity-80">{item.label}</div>
+          </div>
+        ))}
+      </div>
+    );
+  };
+  const NewsSection = () => (
+    <section className="space-y-8">
+      <div className="flex justify-between items-end">
+        <h3 className={`text-2xl font-bold flex items-center gap-2 ${darkMode ? 'text-white' : 'text-slate-900'}`}>
+          <Newspaper className="text-emerald-600" /> {lang === 'bn' ? 'সর্বশেষ সংবাদ' : 'Latest News'}
+        </h3>
+      </div>
+      <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {news.map(item => (
+          <div key={item.id} id={`news-${item.id}`} className={`card group cursor-pointer relative ${darkMode ? 'bg-slate-800 border-slate-700' : ''}`}>
+            <div className="aspect-video bg-slate-100 overflow-hidden">
+              {item.image && <img src={item.image} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />}
+            </div>
+            <div className="p-6">
+              <div className="flex justify-between items-start mb-2 text-xs text-slate-400 font-bold">
+                <span>{new Date(item.created_at).toLocaleDateString()}</span>
+                <button 
+                  onClick={(e) => { e.stopPropagation(); handleShare('news', item); }}
+                  className="p-1 px-2 rounded-full border border-slate-200 hover:bg-slate-100 transition-colors flex items-center gap-1 opacity-0 group-hover:opacity-100"
+                >
+                  <Share2 size={12} /> {lang === 'bn' ? 'শেয়ার' : 'Share'}
+                </button>
+              </div>
+              <h4 className={`text-lg font-bold mb-2 line-clamp-2 ${darkMode ? 'text-white' : 'text-slate-900'}`}>{lang === 'bn' ? item.title_bn : item.title_en}</h4>
+              <p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'} ${expandedNews.has(item.id) ? '' : 'line-clamp-3'}`}>
+                {lang === 'bn' ? item.content_bn : item.content_en}
+              </p>
+              {(lang === 'bn' ? item.content_bn : item.content_en).length > 100 && (
+                <button 
+                  onClick={(e) => { e.stopPropagation(); toggleNewsExpansion(item.id); }}
+                  className="text-emerald-600 text-xs font-bold mt-2 hover:underline"
+                >
+                  {expandedNews.has(item.id) ? (lang === 'bn' ? 'সংক্ষেপে দেখুন' : 'Show Less') : (lang === 'bn' ? 'আরও পড়ুন' : 'Read More')}
+                </button>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+
+  const GallerySection = () => (
+    <section className="space-y-8">
+      <h3 className={`text-2xl font-bold flex items-center gap-2 ${darkMode ? 'text-white' : 'text-slate-900'}`}>
+        <ImageIcon className="text-emerald-600" /> {lang === 'bn' ? 'গ্যালারি' : 'Campaign Gallery'}
+      </h3>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        {gallery.map(item => (
+          <div key={item.id} id={`gallery-${item.id}`} className="aspect-square card overflow-hidden relative group cursor-pointer">
+            <img src={item.image} className="w-full h-full object-cover" />
+            <div className="absolute inset-x-0 bottom-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col p-4">
+              <p className="text-white text-xs font-medium mb-2">{lang === 'bn' ? item.caption_bn : item.caption_en}</p>
+              <button 
+                onClick={(e) => { e.stopPropagation(); handleShare('gallery', item); }}
+                className="self-end bg-white text-black p-1.5 px-3 rounded-full text-[10px] font-black uppercase tracking-widest flex items-center gap-2 hover:bg-emerald-500 hover:text-white transition-all transform translate-y-2 group-hover:translate-y-0"
+              >
+                <Share2 size={12} /> {lang === 'bn' ? 'লিঙ্ক কপি করুন' : 'Share'}
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+
+  const BirthVerifySection = () => (
+    <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="max-w-4xl mx-auto space-y-8">
+      <div className="text-center space-y-2">
+        <h2 className="text-3xl font-black text-slate-900 dark:text-white">{t.nav.birthVerify}</h2>
+        <p className="text-slate-500 font-medium">Verify birth registration records via the official government portal.</p>
+      </div>
+
+      <div className={`card overflow-hidden border-2 border-emerald-500 ${darkMode ? 'bg-slate-800' : 'bg-white'}`}>
+        <div className="bg-emerald-600 p-4 text-white flex justify-between items-center">
+          <div className="flex items-center gap-3">
+            <Info size={20} />
+            <span className="font-bold text-sm tracking-tight">Official BDRIS Verification Portal</span>
+          </div>
+          <a 
+            href="https://everify.bdris.gov.bd/" 
+            target="_blank" 
+            rel="noopener noreferrer"
+            className="bg-white/20 hover:bg-white/30 p-2 rounded-lg transition-colors flex items-center gap-2 text-xs font-black uppercase"
+          >
+            Open Separately <ExternalLink size={14} />
+          </a>
+        </div>
+        
+        <div className="aspect-[4/3] md:aspect-video w-full bg-slate-50 relative">
+          <iframe 
+            src="https://everify.bdris.gov.bd/" 
+            className="w-full h-full border-none"
+            title="BDRIS Verification"
+          />
+          {/* Overlay to inform users if loading is slow */}
+          <div className="absolute bottom-4 left-4 right-4 p-3 bg-white/90 backdrop-blur-sm rounded-xl border border-emerald-100 shadow-xl flex items-center gap-3 text-[10px] md:text-xs font-bold text-slate-600">
+            <AlertCircle size={16} className="text-emerald-500" />
+            Note: This portal is managed by the central government. Please ensure you have the 17-digit BRN ready.
+          </div>
+        </div>
+      </div>
+
+      <div className={`p-6 rounded-2xl border-2 border-dashed ${darkMode ? 'border-slate-700 bg-slate-800/50' : 'border-slate-200 bg-slate-50'} space-y-4`}>
+        <h4 className={`font-black flex items-center gap-2 ${darkMode ? 'text-white' : 'text-slate-900'}`}>
+          <HelpCircle size={18} className="text-emerald-500" /> Requirements
+        </h4>
+        <ul className="grid md:grid-cols-2 gap-4 text-sm font-medium text-slate-500">
+          <li className="flex gap-2">
+            <CheckCircle2 size={16} className="text-emerald-500 shrink-0" /> 
+            17-digit Birth Registration Number (BRN)
+          </li>
+          <li className="flex gap-2">
+            <CheckCircle2 size={16} className="text-emerald-500 shrink-0" /> 
+            Correct Date of Birth (YYYY-MM-DD)
+          </li>
+          <li className="flex gap-2">
+            <CheckCircle2 size={16} className="text-emerald-500 shrink-0" /> 
+            Security Captcha Completion
+          </li>
+          <li className="flex gap-2">
+            <CheckCircle2 size={16} className="text-emerald-500 shrink-0" /> 
+            Stable Internet Connection
+          </li>
+        </ul>
+      </div>
+    </motion.div>
+  );
+
+  const EventsSection = () => (
+    <section className="space-y-8">
+      <div className="flex justify-between items-end">
+        <h3 className={`text-2xl font-bold flex items-center gap-2 ${darkMode ? 'text-white' : 'text-slate-900'}`}>
+          <Clock className="text-emerald-600" /> {lang === 'bn' ? 'ইভেন্ট ও ক্যাম্পেইন' : 'Events & Campaigns'}
+        </h3>
+      </div>
+      <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
+        {events.map(event => (
+          <div key={event.id} className={`group card overflow-hidden border-2 transition-all hover:border-emerald-500 hover:shadow-2xl ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-100'}`}>
+            <div className="aspect-[16/9] bg-slate-100 relative overflow-hidden">
+              {event.image ? (
+                <img src={event.image} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center text-slate-300"><ImageIcon size={48} /></div>
+              )}
+              <div className="absolute top-4 left-4">
+                <div className="bg-emerald-600 text-white px-3 py-1 rounded-lg text-xs font-black shadow-lg">
+                  {new Date(event.event_date).toLocaleDateString(lang === 'bn' ? 'bn-BD' : 'en-US', { day: 'numeric', month: 'short' })}
+                </div>
+              </div>
+            </div>
+            <div className="p-6 space-y-4">
+              <h4 className={`text-xl font-black leading-tight ${darkMode ? 'text-emerald-400' : 'text-slate-900'}`}>
+                {lang === 'bn' ? event.title_bn : event.title_en}
+              </h4>
+              <p className={`text-sm line-clamp-3 font-medium ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>
+                {lang === 'bn' ? event.description_bn : event.description_en}
+              </p>
+              <div className="pt-4 border-t border-slate-100 flex items-center justify-between">
+                <div className="flex items-center gap-2 text-xs font-bold text-slate-400">
+                  <QrCode size={14} className="text-emerald-500" />
+                   {lang === 'bn' ? event.location_bn : event.location_en}
+                </div>
+              </div>
+            </div>
+          </div>
+        ))}
+        {events.length === 0 && (
+          <div className="col-span-full py-12 text-center card bg-slate-50 border-dashed border-2 border-slate-200">
+            <Clock className="mx-auto text-slate-300 mb-4" size={48} />
+            <p className="text-slate-500 font-bold">{lang === 'bn' ? 'কোন ইভেন্ট পাওয়া যায়নি' : 'No upcoming events found'}</p>
+          </div>
+        )}
+      </div>
+    </section>
+  );
 
   const StaticPage = ({ title, content }: { title: string, content: React.ReactNode }) => (
     <motion.div
@@ -145,9 +405,9 @@ export default function App() {
       exit={{ opacity: 0, y: -20 }}
       className="max-w-4xl mx-auto py-12 px-4"
     >
-      <div className="card p-8 md:p-12 space-y-6">
-        <h1 className="text-3xl font-black text-slate-900 border-b border-slate-100 pb-6">{title}</h1>
-        <div className="prose prose-slate max-w-none text-slate-600 leading-relaxed space-y-4">
+      <div className={`card p-8 md:p-12 space-y-6 ${darkMode ? 'bg-slate-800 border-slate-700' : ''}`}>
+        <h1 className={`text-3xl font-black border-b pb-6 ${darkMode ? 'text-white border-slate-700' : 'text-slate-900 border-slate-100'}`}>{title}</h1>
+        <div className={`prose max-w-none leading-relaxed space-y-4 ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>
           {content}
         </div>
       </div>
@@ -155,12 +415,133 @@ export default function App() {
   );
 
   const toggleLang = () => setLang(prev => prev === 'en' ? 'bn' : 'en');
+  const toggleDarkMode = () => setDarkMode(!darkMode);
 
-  const handleShare = (type: 'news' | 'gallery', id: number) => {
-    const url = `${window.location.origin}?${type}Id=${id}`;
-    navigator.clipboard.writeText(url);
-    setShareToast(lang === 'bn' ? 'লিঙ্ক কপি করা হয়েছে!' : 'Link copied to clipboard!');
-    setTimeout(() => setShareToast(null), 3000);
+  const toggleNewsExpansion = (id: number) => {
+    setExpandedNews(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const NavItem: React.FC<{ item: any }> = ({ item }) => {
+    const [isOpen, setIsOpen] = useState(false);
+
+    if (!item.items) {
+      return (
+        <button
+          onClick={() => { setActiveTab(item.key); setIsMenuOpen(false); }}
+          className={`text-sm font-bold transition-colors py-2 px-3 rounded-lg hover:bg-emerald-50 hover:text-emerald-600 ${
+            activeTab === item.key ? 'text-emerald-600 bg-emerald-50' : (darkMode ? 'text-slate-300' : 'text-slate-600')
+          }`}
+        >
+          {item.label}
+        </button>
+      );
+    }
+
+    return (
+      <div className="relative group" onMouseEnter={() => setIsOpen(true)} onMouseLeave={() => setIsOpen(false)}>
+        <button
+          className={`text-sm font-bold transition-colors py-2 px-3 rounded-lg flex items-center gap-1 hover:bg-emerald-50 hover:text-emerald-600 ${
+            item.items.some((i: any) => i.key === activeTab) ? 'text-emerald-600 bg-emerald-50' : (darkMode ? 'text-slate-300' : 'text-slate-600')
+          }`}
+        >
+          {item.label}
+          <ChevronDown size={14} className={`transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
+        </button>
+        <AnimatePresence>
+          {isOpen && (
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 10 }}
+              className={`absolute top-full left-0 mt-1 w-56 rounded-xl shadow-2xl border ${
+                darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-100'
+              } p-2 z-[100]`}
+            >
+              {item.items.map((subItem: any) => (
+                <button
+                  key={subItem.key}
+                  onClick={() => { setActiveTab(subItem.key); setIsOpen(false); setIsMenuOpen(false); }}
+                  className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-xs font-bold transition-all hover:translate-x-1 ${
+                    activeTab === subItem.key 
+                      ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-600/20' 
+                      : (darkMode ? 'text-slate-300 hover:bg-slate-700' : 'text-slate-600 hover:bg-emerald-50 hover:text-emerald-600')
+                  }`}
+                >
+                  {subItem.icon && <subItem.icon size={16} className={activeTab === subItem.key ? 'text-white' : 'text-emerald-500'} />}
+                  {subItem.label}
+                </button>
+              ))}
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+    );
+  };
+
+  const menuStructure = [
+    { key: 'home', label: t.nav.home },
+    { 
+      label: t.nav.services,
+      items: [
+        { key: 'voterSlip', label: t.nav.voterSlip, icon: ShieldCheck },
+        { key: 'birthVerify', label: t.nav.birthVerify, icon: FileText },
+        { key: 'volunteer', label: t.nav.volunteer, icon: UserPlus },
+        { key: 'complaint', label: t.nav.complaint, icon: MessageSquare }
+      ]
+    },
+    {
+      label: t.nav.community,
+      items: [
+        { key: 'events', label: t.nav.events, icon: Clock },
+        { key: 'news', label: t.nav.news, icon: Newspaper },
+        { key: 'gallery', label: t.nav.gallery, icon: ImageIcon }
+      ]
+    },
+    {
+      label: t.nav.support,
+      items: [
+        { key: 'about', label: t.nav.about, icon: Info },
+        { key: 'contact', label: t.nav.contact, icon: Mail },
+        { key: 'privacy', label: t.nav.privacy, icon: Shield },
+        { key: 'terms', label: t.nav.terms, icon: FileText }
+      ]
+    }
+  ];
+
+  const [toast, setToast] = useState<{message: string, type: 'success' | 'error'} | null>(null);
+
+  const showToast = (message: string, type: 'success' | 'error' = 'success') => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 3000);
+  };
+
+  const handleShare = (type: 'news' | 'gallery', item: any) => {
+    const title = lang === 'bn' ? item.title_bn : item.title_en;
+    const url = `${window.location.origin}?${type}Id=${item.id}`;
+    const text = `Check out this ${type}: ${title}`;
+    
+    setActiveShareItem({ title, text, url });
+  };
+
+  const [activeShareItem, setActiveShareItem] = useState<{title: string, text: string, url: string} | null>(null);
+
+  const handleSocialShare = (platform: 'facebook' | 'twitter' | 'whatsapp') => {
+    if (!activeShareItem) return;
+    const url = encodeURIComponent(activeShareItem.url);
+    const text = encodeURIComponent(activeShareItem.text);
+    
+    let shareUrl = '';
+    if (platform === 'facebook') shareUrl = `https://www.facebook.com/sharer/sharer.php?u=${url}`;
+    if (platform === 'twitter') shareUrl = `https://twitter.com/intent/tweet?url=${url}&text=${text}`;
+    if (platform === 'whatsapp') shareUrl = `https://api.whatsapp.com/send?text=${text}%20${url}`;
+    
+    window.open(shareUrl, '_blank', 'width=600,height=400');
+    setActiveShareItem(null);
   };
 
   const handleVoterSearch = async (e: React.FormEvent) => {
@@ -183,6 +564,59 @@ export default function App() {
     } catch (err) {
       setVoterError("Connection error");
     }
+  };
+
+  const [isBirthLoading, setIsBirthLoading] = useState(false);
+
+  const handleBirthVerify = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setBirthError('');
+    setBirthData(null);
+    setIsBirthLoading(true);
+
+    if (birthRegId.length !== 17) {
+      setBirthError(lang === 'bn' ? 'ভুল জন্ম নিবন্ধন নম্বর! এটি ১৭ ডিজিটের হতে হবে।' : 'Invalid Birth Registration Number! It must be 17 digits.');
+      setIsBirthLoading(false);
+      return;
+    }
+
+    // Simulate API delay
+    setTimeout(() => {
+      // Logic to make it look a bit more dynamic for demo
+      const names = [
+        { en: "Abdur Rahman", bn: "আব্দুর রহমান", f_en: "Late Fazlul Haque", f_bn: "মরহুম ফজলুল হক", m_en: "Amena Begum", m_bn: "আমেনা বেগম" },
+        { en: "Fatima Khatun", bn: "ফাতিমা খাতুন", f_en: "Nurul Islam", f_bn: "নুরুল ইসলাম", m_en: "Razia Sultana", m_bn: "রাজিয়া সুলতানা" },
+        { en: "Mohammad Ali", bn: "মোহাম্মদ আলী", f_en: "Ibrahim Hossain", f_bn: "ইব্রাহিম হোসেন", m_en: "Kulsum Bibi", m_bn: "কুলসুম বিবি" }
+      ];
+      const selected = names[parseInt(birthRegId.slice(-1)) % 3] || names[0];
+
+      setBirthData({
+        regId: birthRegId,
+        dob: birthDob,
+        regDate: "2018-11-20",
+        issueDate: "2018-11-21",
+        name_en: selected.en,
+        name_bn: selected.bn,
+        gender_en: parseInt(birthRegId.slice(-1)) % 2 === 0 ? "Female" : "Male",
+        gender_bn: parseInt(birthRegId.slice(-1)) % 2 === 0 ? "মহিলা" : "পুরুষ",
+        birthOrder: "1",
+        father_name_en: selected.f_en,
+        father_name_bn: selected.f_bn,
+        father_nationality_en: "Bangladeshi",
+        father_nationality_bn: "বাংলাদেশী",
+        mother_name_en: selected.m_en,
+        mother_name_bn: selected.m_bn,
+        mother_nationality_en: "Bangladeshi",
+        mother_nationality_bn: "বাংলাদেশী",
+        place_of_birth_en: "Dhaka, Bangladesh",
+        place_of_birth_bn: "ঢাকা, বাংলাদেশ",
+        permanent_address_en: "Ward 29, DNCC, Dhaka",
+        permanent_address_bn: "ওয়ার্ড ২৯, ডিএনসিসি, ঢাকা",
+        status: "Verified",
+        verified_at: new Date().toISOString()
+      });
+      setIsBirthLoading(false);
+    }, 1500);
   };
 
   const handleVolunteerReg = async (e: React.FormEvent) => {
@@ -272,21 +706,57 @@ export default function App() {
 
   const fetchAdminData = async () => {
     try {
-      const [vRes, cRes, nRes, gRes, uRes] = await Promise.all([
+      const [vRes, cRes, nRes, gRes, eRes, uRes] = await Promise.all([
         fetch('/api/volunteers'),
         fetch('/api/admin/complaints'),
         fetch('/api/news'),
         fetch('/api/gallery'),
+        fetch('/api/events'),
         fetch('/api/admin/users')
       ]);
       if (vRes.ok) setVolunteers(await vRes.json());
       if (cRes.ok) setAdminComplaints(await cRes.json());
       if (nRes.ok) setNews(await nRes.json());
       if (gRes.ok) setGallery(await gRes.json());
+      if (eRes.ok) setEvents(await eRes.json());
       if (uRes.ok) setAdminUsers(await uRes.json());
     } catch (err) {
       console.error(err);
     }
+  };
+
+  const addEvent = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!adminUser || adminUser.role === 'Viewer') return;
+    await fetch('/api/admin/events', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(newEvent)
+    });
+    setNewEvent({ title_en: '', title_bn: '', description_en: '', description_bn: '', event_date: '', location_en: '', location_bn: '', image: '' });
+    fetchAdminData();
+    showToast(lang === 'bn' ? 'ইভেন্ট তৈরি করা হয়েছে' : 'Event created successfully');
+  };
+
+  const updateEvent = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!adminUser || adminUser.role === 'Viewer' || !editingEvent) return;
+    await fetch(`/api/admin/events/${editingEvent.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(editingEvent)
+    });
+    setEditingEvent(null);
+    fetchAdminData();
+    showToast(lang === 'bn' ? 'ইভেন্ট আপডেট করা হয়েছে' : 'Event updated successfully');
+  };
+
+  const deleteEvent = async (id: number) => {
+    if (!adminUser || adminUser.role === 'Viewer') return;
+    await fetch(`/api/admin/events/${id}`, { method: 'DELETE' });
+    setDeleteConfirm(null);
+    fetchAdminData();
+    showToast(lang === 'bn' ? 'ইভেন্ট মুছে ফেলা হয়েছে' : 'Event deleted');
   };
 
   const approveVolunteer = async (id: number) => {
@@ -320,6 +790,7 @@ export default function App() {
     });
     setNewNews({ title_en: '', title_bn: '', content_en: '', content_bn: '', image: '' });
     fetchAdminData();
+    showToast(lang === 'bn' ? 'সংবাদ যোগ করা হয়েছে' : 'News added successfully');
   };
 
   const deleteNews = async (id: number) => {
@@ -327,6 +798,26 @@ export default function App() {
     await fetch(`/api/admin/news/${id}`, { method: 'DELETE' });
     setDeleteConfirm(null);
     fetchAdminData();
+    showToast(lang === 'bn' ? 'সংবাদ মুছে ফেলা হয়েছে' : 'News deleted successfully');
+  };
+
+  const updateNews = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!adminUser || adminUser.role === 'Viewer' || !editingNews) return;
+    try {
+      const res = await fetch(`/api/admin/news/${editingNews.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(editingNews)
+      });
+      if (res.ok) {
+        setEditingNews(null);
+        fetchAdminData();
+        showToast(lang === 'bn' ? 'সংবাদ আপডেট করা হয়েছে' : 'News updated successfully');
+      }
+    } catch (err) {
+      console.error(err);
+    }
   };
 
   const addGallery = async (e: React.FormEvent) => {
@@ -339,6 +830,7 @@ export default function App() {
     });
     setNewGallery({ caption_en: '', caption_bn: '', image: '' });
     fetchAdminData();
+    showToast(lang === 'bn' ? 'গ্যালারি আইটেম যোগ করা হয়েছে' : 'Gallery item added successfully');
   };
 
   const deleteGallery = async (id: number) => {
@@ -346,6 +838,26 @@ export default function App() {
     await fetch(`/api/admin/gallery/${id}`, { method: 'DELETE' });
     setDeleteConfirm(null);
     fetchAdminData();
+    showToast(lang === 'bn' ? 'গ্যালারি আইটেম মুছে ফেলা হয়েছে' : 'Gallery item deleted successfully');
+  };
+
+  const updateGallery = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!adminUser || adminUser.role === 'Viewer' || !editingGallery) return;
+    try {
+      const res = await fetch(`/api/admin/gallery/${editingGallery.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(editingGallery)
+      });
+      if (res.ok) {
+        setEditingGallery(null);
+        fetchAdminData();
+        showToast(lang === 'bn' ? 'গ্যালারি আইটেম আপডেট করা হয়েছে' : 'Gallery item updated successfully');
+      }
+    } catch (err) {
+      console.error(err);
+    }
   };
 
   const addAdminUser = async (e: React.FormEvent) => {
@@ -392,14 +904,17 @@ export default function App() {
   }, [news, gallery]);
 
   return (
-    <div className={`min-h-screen flex flex-col ${lang === 'bn' ? 'bn' : ''} pb-16 md:pb-0`}>
+    <div className={`min-h-screen flex flex-col ${lang === 'bn' ? 'bn' : ''} ${darkMode ? 'dark bg-slate-900' : 'bg-slate-50'} pb-16 md:pb-0`}>
       {/* Mobile Header */}
-      <div className="md:hidden bg-emerald-600 text-white px-4 py-3 sticky top-0 z-[60] flex items-center justify-between no-print shadow-md">
+      <div className={`md:hidden ${darkMode ? 'bg-slate-800' : 'bg-emerald-600'} text-white px-4 py-3 sticky top-0 z-[60] flex items-center justify-between no-print shadow-md`}>
         <div className="flex items-center gap-2" onClick={() => setActiveTab('home')}>
           <div className="w-8 h-8 bg-white text-emerald-600 rounded-lg flex items-center justify-center font-bold">29</div>
           <span className="font-bold tracking-tight">Ward 29 Portal</span>
         </div>
         <div className="flex items-center gap-3">
+          <button onClick={toggleDarkMode} className="p-2 bg-white/10 rounded-lg">
+            {darkMode ? <Sun size={18} /> : <Moon size={18} />}
+          </button>
           <button onClick={toggleLang} className="text-[10px] font-black bg-white/20 px-2 py-1 rounded-md uppercase tracking-widest">
             {lang === 'en' ? 'BN' : 'EN'}
           </button>
@@ -410,29 +925,29 @@ export default function App() {
       </div>
 
       {/* Navigation */}
-      <nav className="hidden md:block bg-white border-b border-slate-200 sticky top-0 z-50 no-print">
+      <nav className={`hidden md:block ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'} sticky top-0 z-50 no-print`}>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16 items-center">
             <div className="flex items-center gap-2 cursor-pointer" onClick={() => setActiveTab('home')}>
-              <div className="w-10 h-10 bg-emerald-600 rounded-xl flex items-center justify-center text-white font-bold text-xl">
+              <div className={`w-10 h-10 ${darkMode ? 'bg-emerald-500' : 'bg-emerald-600'} rounded-xl flex items-center justify-center text-white font-bold text-xl`}>
                 29
               </div>
               <div className="hidden sm:block">
-                <h1 className="text-lg font-bold text-slate-900 leading-tight">{t.hero.title}</h1>
-                <p className="text-xs text-slate-500 font-medium">Mohammadpur, Dhaka</p>
+                <h1 className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-slate-900'} leading-tight`}>{t.hero.title}</h1>
+                <p className={`text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'} font-medium`}>Mohammadpur, Dhaka</p>
               </div>
             </div>
 
             <div className="hidden md:flex items-center gap-8">
-              {Object.entries(t.nav).map(([key, label]) => (
-                <button
-                  key={key}
-                  onClick={() => setActiveTab(key)}
-                  className={`text-sm font-medium transition-colors ${activeTab === key ? 'text-emerald-600' : 'text-slate-600 hover:text-emerald-600'}`}
-                >
-                  {label}
-                </button>
+              {menuStructure.map((item, idx) => (
+                <NavItem key={idx} item={item} />
               ))}
+              <button 
+                onClick={toggleDarkMode}
+                className={`p-2 rounded-lg transition-colors ${darkMode ? 'bg-slate-800 text-yellow-400' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+              >
+                {darkMode ? <Sun size={18} /> : <Moon size={18} />}
+              </button>
               <button 
                 onClick={toggleLang}
                 className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-100 text-slate-700 text-xs font-bold hover:bg-slate-200 transition-colors"
@@ -461,14 +976,41 @@ export default function App() {
               className="md:hidden bg-white border-t border-slate-100 overflow-hidden"
             >
               <div className="px-4 py-4 space-y-2">
-                {Object.entries(t.nav).map(([key, label]) => (
-                  <button
-                    key={key}
-                    onClick={() => { setActiveTab(key); setIsMenuOpen(false); }}
-                    className="block w-full text-left px-4 py-3 rounded-lg text-slate-700 hover:bg-slate-50 font-medium"
-                  >
-                    {label}
-                  </button>
+                {menuStructure.map((item, idx) => (
+                  <div key={idx} className="space-y-4">
+                    {!item.items ? (
+                      <button
+                        onClick={() => { setActiveTab(item.key); setIsMenuOpen(false); }}
+                        className={`block w-full text-left px-4 py-3 rounded-xl text-lg font-black ${activeTab === item.key ? 'text-emerald-600 bg-emerald-50' : (darkMode ? 'text-white' : 'text-slate-700')}`}
+                      >
+                        {item.label}
+                      </button>
+                    ) : (
+                      <div className="space-y-2">
+                        <p className={`text-[10px] font-black uppercase tracking-widest px-4 ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>
+                          {item.label}
+                        </p>
+                        <div className="grid grid-cols-1 gap-1">
+                          {item.items.map((subItem: any) => (
+                            <button
+                              key={subItem.key}
+                              onClick={() => { setActiveTab(subItem.key); setIsMenuOpen(false); }}
+                              className={`flex items-center gap-4 px-4 py-3 rounded-xl transition-all ${
+                                activeTab === subItem.key 
+                                  ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-600/20' 
+                                  : (darkMode ? 'text-slate-300 hover:bg-slate-800' : 'text-slate-600 hover:bg-slate-50')
+                              }`}
+                            >
+                              <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${activeTab === subItem.key ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-400'}`}>
+                                {subItem.icon && <subItem.icon size={20} />}
+                              </div>
+                              <span className="text-sm font-black">{subItem.label}</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 ))}
               </div>
             </motion.div>
@@ -490,11 +1032,11 @@ export default function App() {
                 <motion.h2 
                   initial={{ scale: 0.9 }}
                   animate={{ scale: 1 }}
-                  className="text-4xl md:text-6xl font-bold text-slate-900 tracking-tight"
+                  className={`text-4xl md:text-6xl font-bold ${darkMode ? 'text-white' : 'text-slate-900'} tracking-tight`}
                 >
                   {t.hero.title}
                 </motion.h2>
-                <p className="text-xl text-slate-600 max-w-2xl mx-auto">
+                <p className={`text-xl ${darkMode ? 'text-slate-300' : 'text-slate-600'} max-w-2xl mx-auto`}>
                   {t.hero.subtitle}
                 </p>
                 <div className="flex flex-wrap justify-center gap-4 pt-4">
@@ -507,49 +1049,27 @@ export default function App() {
                 </div>
               </section>
 
-              {/* News Section */}
-              {news.length > 0 && (
-                <section className="space-y-8">
-                  <div className="flex justify-between items-end">
-                    <h3 className="text-2xl font-bold flex items-center gap-2">
-                      <Newspaper className="text-emerald-600" /> {lang === 'bn' ? 'সর্বশেষ সংবাদ' : 'Latest News'}
-                    </h3>
-                  </div>
-                  <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {news.map(item => (
-                      <div key={item.id} id={`news-${item.id}`} className="card group cursor-pointer">
-                        <div className="aspect-video bg-slate-100 overflow-hidden">
-                          {item.image && <img src={item.image} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />}
-                        </div>
-                        <div className="p-6">
-                          <p className="text-xs text-slate-400 font-bold mb-2">{new Date(item.created_at).toLocaleDateString()}</p>
-                          <h4 className="text-lg font-bold mb-2 line-clamp-2">{lang === 'bn' ? item.title_bn : item.title_en}</h4>
-                          <p className="text-sm text-slate-500 line-clamp-3">{lang === 'bn' ? item.content_bn : item.content_en}</p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </section>
-              )}
+              {/* Section links moved to standalone view or integrated */}
+              {news.length > 0 && <NewsSection />}
+              {gallery.length > 0 && <GallerySection />}
+            </motion.div>
+          )}
 
-              {/* Gallery Section */}
-              {gallery.length > 0 && (
-                <section className="space-y-8">
-                  <h3 className="text-2xl font-bold flex items-center gap-2">
-                    <ImageIcon className="text-emerald-600" /> {lang === 'bn' ? 'গ্যালারি' : 'Campaign Gallery'}
-                  </h3>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    {gallery.map(item => (
-                      <div key={item.id} id={`gallery-${item.id}`} className="aspect-square card overflow-hidden relative group">
-                        <img src={item.image} className="w-full h-full object-cover" />
-                        <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-end p-4">
-                          <p className="text-white text-xs font-medium">{lang === 'bn' ? item.caption_bn : item.caption_en}</p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </section>
-              )}
+          {activeTab === 'news' && (
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-8">
+               <NewsSection />
+            </motion.div>
+          )}
+
+          {activeTab === 'events' && (
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-8">
+               <EventsSection />
+            </motion.div>
+          )}
+
+          {activeTab === 'gallery' && (
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-8">
+               <GallerySection />
             </motion.div>
           )}
 
@@ -573,7 +1093,15 @@ export default function App() {
                 <form onSubmit={handleVoterSearch} className="space-y-6">
                   <div className="grid md:grid-cols-2 gap-6">
                     <div className="space-y-2">
-                      <label className="block text-xs font-black text-slate-400 uppercase tracking-widest">{t.voter.nidLabel}</label>
+                      <label className="text-xs font-black text-slate-400 uppercase tracking-widest flex items-center justify-between">
+                        {t.voter.nidLabel}
+                        <div className="group/tip relative">
+                          <Info size={14} className="text-slate-300 hover:text-emerald-500 transition-colors cursor-help" />
+                          <div className="absolute bottom-full right-0 mb-2 w-64 p-3 bg-slate-900 text-[10px] leading-relaxed text-white rounded-xl opacity-0 invisible group-hover/tip:opacity-100 group-hover/tip:visible transition-all shadow-xl z-50 pointer-events-none">
+                            <span className="font-bold text-emerald-400">NID Format:</span> 10 digits (Smart Card), 13 digits (Old), or 17 digits (Old + Birth Year prefix).
+                          </div>
+                        </div>
+                      </label>
                       <input
                         type="text"
                         required
@@ -658,12 +1186,13 @@ export default function App() {
                         <p className="text-sm font-bold">{voter.mother_name}</p>
                       </div>
                     )}
-                    <div className="col-span-2">
+                    <div>
                       <p className="text-xs uppercase tracking-wider text-slate-400 font-bold mb-1">{t.voter.center}</p>
                       <div className="space-y-1">
-                        <p className="text-lg font-bold text-slate-900">{voter.polling_center_en}</p>
-                        <p className="text-sm font-bold text-slate-600">{voter.polling_center_bn}</p>
+                        <p className={`text-lg font-bold ${darkMode ? 'text-slate-200' : 'text-slate-900'}`}>{voter.polling_center_en}</p>
+                        <p className={`text-sm font-bold ${darkMode ? 'text-slate-400' : 'text-slate-600'}`}>{voter.polling_center_bn}</p>
                       </div>
+                      <CountdownTimer />
                     </div>
                     <div>
                       <p className="text-xs uppercase tracking-wider text-slate-400 font-bold mb-1">{t.voter.serial}</p>
@@ -679,6 +1208,17 @@ export default function App() {
                         <p className="text-sm font-bold">{voter.address}</p>
                       </div>
                     )}
+                    <div className="col-span-2 bg-emerald-50 p-4 rounded-xl border border-emerald-100 mt-2">
+                      <h4 className="text-xs font-black text-emerald-800 uppercase tracking-widest mb-1">
+                        {lang === 'bn' ? 'ভোটের দিন তথ্য' : 'Voting Day Information'}
+                      </h4>
+                      <p className="text-sm text-emerald-700 font-medium leading-relaxed">
+                        {lang === 'bn' 
+                          ? `ভোটগ্রহণ অনুষ্ঠিত হবে ১ ডিসেম্বর, ২০২৪ তারিখে। অনুগ্রহ করে এই স্লিপ এবং আপনার মূল এনআইডি কার্ড সাথে আনুন। ভোটকেন্দ্র সকাল ৮টা থেকে বিকাল ৪টা পর্যন্ত খোলা থাকবে।`
+                          : `Polling will take place on December 1st, 2024. Please bring this slip and your original NID card. The polling station will be open from 8 AM to 4 PM.`
+                        }
+                      </p>
+                    </div>
                   </div>
 
                   <div className="mt-8 pt-6 border-t border-dashed border-slate-200 flex justify-between items-center no-print">
@@ -747,6 +1287,18 @@ export default function App() {
                                         <p class="text-sm font-black text-emerald-600 font-mono">${voter.booth_no}</p>
                                       </div>
                                       ${voter.address ? `<div class="col-span-2"><p class="text-[9px] uppercase text-slate-400 font-black tracking-widest">${t.voter.address}</p><p class="text-[10px] font-bold text-slate-600">${voter.address}</p></div>` : ''}
+                                      
+                                      <div class="col-span-2 bg-emerald-50 p-4 rounded-xl border border-emerald-100 mt-2">
+                                        <h4 class="text-[9px] font-black text-emerald-800 uppercase tracking-widest mb-1">
+                                          ${lang === 'bn' ? 'ভোটের দিন তথ্য' : 'Voting Day Information'}
+                                        </h4>
+                                        <p class="text-[10px] text-emerald-700 font-medium leading-relaxed">
+                                          ${lang === 'bn' 
+                                            ? `ভোটগ্রহণ অনুষ্ঠিত হবে ১ ডিসেম্বর, ২০২৪ তারিখে। অনুগ্রহ করে এই স্লিপ এবং আপনার মূল এনআইডি কার্ড সাথে আনুন। ভোটকেন্দ্র সকাল ৮টা থেকে বিকাল ৪টা পর্যন্ত খোলা থাকবে।`
+                                            : `Polling will take place on December 1st, 2024. Please bring this slip and your original NID card. The polling station will be open from 8 AM to 4 PM.`
+                                          }
+                                        </p>
+                                      </div>
                                     </div>
 
                                     <div class="bg-emerald-50 p-4 rounded-xl border border-emerald-100">
@@ -783,6 +1335,10 @@ export default function App() {
                 </motion.div>
               )}
             </motion.div>
+          )}
+
+          {activeTab === 'birthVerify' && (
+            <BirthVerifySection />
           )}
 
           {activeTab === 'volunteer' && (
@@ -931,6 +1487,14 @@ export default function App() {
                       <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">{t.complaint.subject}</p>
                       <p className="font-bold text-slate-900">{trackedComplaint.subject}</p>
                     </div>
+                    {trackedComplaint.status === 'Resolved' && (
+                      <div className="bg-emerald-50 text-emerald-700 p-4 rounded-xl text-sm font-bold flex items-center gap-2 border border-emerald-100 shadow-sm">
+                        <CheckCircle2 size={18} />
+                        {lang === 'bn' 
+                          ? 'আপনার ধৈর্যের জন্য ধন্যবাদ। আপনার সমস্যাটি সমাধান করা হয়েছে।' 
+                          : 'Thank you for your patience. Your issue has been resolved.'}
+                      </div>
+                    )}
                     {trackedComplaint.admin_note && (
                       <div className="p-3 bg-white border border-slate-200 rounded-lg">
                         <p className="text-xs font-bold text-emerald-600 uppercase tracking-widest mb-1">{t.complaint.adminNote}</p>
@@ -1086,8 +1650,9 @@ export default function App() {
                         {[
                           { id: 'volunteers', icon: UserPlus, label: t.admin.volunteers },
                           { id: 'complaints', icon: MessageSquare, label: t.admin.complaints },
-                          { id: 'news', icon: Newspaper, label: t.admin.news },
-                          { id: 'gallery', icon: ImageIcon, label: t.admin.gallery },
+                          { id: 'news', icon: Newspaper, label: t.nav.news },
+                          { id: 'events', icon: Clock, label: t.nav.events },
+                          { id: 'gallery', icon: ImageIcon, label: t.nav.gallery },
                           ...(adminUser.role === 'SuperAdmin' ? [{ id: 'users', icon: ShieldCheck, label: t.admin.users }] : [])
                         ].map(tab => (
                           <button
@@ -1128,6 +1693,36 @@ export default function App() {
 
                     {adminSubTab === 'volunteers' && (
                     <div className="card overflow-hidden">
+                      <div className="p-4 bg-slate-50 border-b border-slate-100 flex flex-col md:flex-row gap-4">
+                        <div className="flex-grow flex items-center bg-white border border-slate-200 rounded-xl px-4 py-2 ring-1 ring-slate-100 focus-within:ring-2 focus-within:ring-emerald-500">
+                          <Search size={18} className="text-slate-400 mr-2" />
+                          <input 
+                            type="text" 
+                            placeholder={lang === 'bn' ? 'নাম বা ফোন নম্বর দিয়ে খুঁজুন...' : 'Search by name or phone...'}
+                            value={volSearch}
+                            onChange={(e) => setVolSearch(e.target.value)}
+                            className="bg-transparent border-none outline-none text-sm w-full font-medium"
+                          />
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{lang === 'bn' ? 'ফিল্টার:' : 'Filter:'}</span>
+                          <div className="flex bg-white p-1 rounded-lg border border-slate-200 shadow-sm">
+                            {(['all', 'pending', 'approved'] as const).map(status => (
+                              <button
+                                key={status}
+                                onClick={() => setVolStatusFilter(status)}
+                                className={`px-3 py-1 rounded-md text-[10px] font-black uppercase tracking-tight transition-all ${
+                                  volStatusFilter === status 
+                                    ? 'bg-emerald-600 text-white shadow-sm shadow-emerald-600/20' 
+                                    : 'text-slate-400 hover:text-slate-600'
+                                }`}
+                              >
+                                {status === 'all' ? (lang === 'bn' ? 'সব' : 'All') : t.volunteer[status as keyof typeof t.volunteer] || status}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
                       <div className="overflow-x-auto">
                         <table className="w-full text-left">
                           <thead>
@@ -1139,8 +1734,15 @@ export default function App() {
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-100">
-                            {volunteers.map(v => (
-                              <tr key={v.id} className="hover:bg-slate-50 transition-colors">
+                            {volunteers
+                              .filter(v => {
+                                const matchesSearch = v.name.toLowerCase().includes(volSearch.toLowerCase()) || 
+                                                     v.phone.includes(volSearch);
+                                const matchesStatus = volStatusFilter === 'all' || v.status === volStatusFilter;
+                                return matchesSearch && matchesStatus;
+                              })
+                              .map(v => (
+                                <tr key={v.id} className="hover:bg-slate-50 transition-colors">
                                 <td className="px-6 py-4">
                                   <div className="flex items-center gap-3">
                                     <div className="w-10 h-10 rounded-full bg-slate-200 overflow-hidden">
@@ -1249,9 +1851,9 @@ export default function App() {
                                             win.document.close();
                                           }
                                         }}
-                                        className="text-xs font-bold text-emerald-600 hover:underline flex items-center gap-1"
+                                        className="text-xs font-bold text-emerald-600 hover:scale-105 transition-transform flex items-center gap-1 bg-emerald-50 px-3 py-1.5 rounded-lg border border-emerald-100"
                                       >
-                                        <Printer size={12} /> Print ID
+                                        <Printer size={12} /> {lang === 'bn' ? 'কার্ড তৈরি করুন' : 'Generate ID Card'}
                                       </button>
                                     </div>
                                   )}
@@ -1337,7 +1939,15 @@ export default function App() {
                       {adminUser.role !== 'Viewer' && (
                         <div className="lg:col-span-1">
                           <form onSubmit={addNews} className="card p-6 space-y-4 sticky top-24">
-                            <h3 className="font-bold flex items-center gap-2"><Plus size={18} /> Add News</h3>
+                            <h3 className="font-bold flex items-center justify-between gap-2">
+                              <div className="flex items-center gap-2"><Plus size={18} /> Add News</div>
+                              <div className="group/tip relative">
+                                <HelpCircle size={14} className="text-slate-300 hover:text-emerald-500 cursor-help" />
+                                <div className="absolute bottom-full right-0 mb-2 w-48 p-2 bg-slate-900 text-[10px] text-white rounded-lg opacity-0 invisible group-hover/tip:opacity-100 group-hover/tip:visible transition-all shadow-xl z-50 pointer-events-none">
+                                  News will be visible on the public home page immediate after publishing.
+                                </div>
+                              </div>
+                            </h3>
                             <input type="text" placeholder="Title (EN)" required value={newNews.title_en} onChange={e => setNewNews({...newNews, title_en: e.target.value})} className="w-full px-4 py-2 rounded-lg border border-slate-200 text-sm" />
                             <input type="text" placeholder="Title (BN)" required value={newNews.title_bn} onChange={e => setNewNews({...newNews, title_bn: e.target.value})} className="w-full px-4 py-2 rounded-lg border border-slate-200 text-sm" />
                             <textarea placeholder="Content (EN)" required rows={3} value={newNews.content_en} onChange={e => setNewNews({...newNews, content_en: e.target.value})} className="w-full px-4 py-2 rounded-lg border border-slate-200 text-sm"></textarea>
@@ -1358,13 +1968,16 @@ export default function App() {
                               <p className="text-xs text-slate-500 line-clamp-2 mt-1">{item.content_bn}</p>
                               <div className="flex items-center gap-2 mt-2">
                                 <button 
-                                  onClick={() => handleShare('news', item.id)}
+                                  onClick={() => handleShare('news', item)}
                                   className="text-emerald-600 hover:text-emerald-700 p-1 rounded-lg hover:bg-emerald-50 transition-colors flex items-center gap-1 text-[10px] font-bold"
                                 >
                                   <Share2 size={14} /> Share
                                 </button>
                                 {adminUser.role !== 'Viewer' && (
-                                  <button onClick={() => setDeleteConfirm({ id: item.id, type: 'news' })} className="text-red-600 hover:text-red-700 p-1"><Trash2 size={14} /></button>
+                                  <div className="flex items-center gap-2">
+                                    <button onClick={() => setEditingNews(item)} className="text-emerald-600 hover:text-emerald-700 p-1"><Pencil size={14} /></button>
+                                    <button onClick={() => setDeleteConfirm({ id: item.id, type: 'news' })} className="text-red-600 hover:text-red-700 p-1"><Trash2 size={14} /></button>
+                                  </div>
                                 )}
                               </div>
                             </div>
@@ -1379,7 +1992,15 @@ export default function App() {
                       {adminUser.role !== 'Viewer' && (
                         <div className="lg:col-span-1">
                           <form onSubmit={addGallery} className="card p-6 space-y-4 sticky top-24">
-                            <h3 className="font-bold flex items-center gap-2"><Plus size={18} /> Add Photo</h3>
+                            <h3 className="font-bold flex items-center justify-between gap-2">
+                              <div className="flex items-center gap-2"><Plus size={18} /> Add Photo</div>
+                              <div className="group/tip relative">
+                                <HelpCircle size={14} className="text-slate-300 hover:text-emerald-500 cursor-help" />
+                                <div className="absolute bottom-full right-0 mb-2 w-48 p-2 bg-slate-900 text-[10px] text-white rounded-lg opacity-0 invisible group-hover/tip:opacity-100 group-hover/tip:visible transition-all shadow-xl z-50 pointer-events-none">
+                                   Ensure images are in JPG/PNG format for best compatibility.
+                                </div>
+                              </div>
+                            </h3>
                             <input type="text" placeholder="Caption (EN)" required value={newGallery.caption_en} onChange={e => setNewGallery({...newGallery, caption_en: e.target.value})} className="w-full px-4 py-2 rounded-lg border border-slate-200 text-sm" />
                             <input type="text" placeholder="Caption (BN)" required value={newGallery.caption_bn} onChange={e => setNewGallery({...newGallery, caption_bn: e.target.value})} className="w-full px-4 py-2 rounded-lg border border-slate-200 text-sm" />
                             <input type="file" accept="image/*" onChange={e => handlePhotoUpload(e, (val) => setNewGallery({...newGallery, image: val}))} className="text-xs" />
@@ -1395,15 +2016,70 @@ export default function App() {
                               <p className="text-white text-xs font-medium mb-2">{item.caption_bn}</p>
                               <div className="flex items-center gap-2">
                                 <button 
-                                  onClick={() => handleShare('gallery', item.id)}
+                                  onClick={() => handleShare('gallery', item)}
                                   className="text-white bg-emerald-600 p-2 rounded-lg hover:bg-emerald-700 transition-colors"
                                 >
                                   <Share2 size={14} />
                                 </button>
                                 {adminUser.role !== 'Viewer' && (
-                                  <button onClick={() => setDeleteConfirm({ id: item.id, type: 'gallery' })} className="text-white bg-red-600 p-2 rounded-lg hover:bg-red-700 transition-colors">
-                                    <Trash2 size={14} />
-                                  </button>
+                                  <div className="flex items-center gap-2">
+                                    <button onClick={() => setEditingGallery(item)} className="text-white bg-blue-600 p-2 rounded-lg hover:bg-blue-700 transition-colors">
+                                      <Pencil size={14} />
+                                    </button>
+                                    <button onClick={() => setDeleteConfirm({ id: item.id, type: 'gallery' })} className="text-white bg-red-600 p-2 rounded-lg hover:bg-red-700 transition-colors">
+                                      <Trash2 size={14} />
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                   )}
+
+                   {adminSubTab === 'events' && (
+                    <div className="grid lg:grid-cols-3 gap-8">
+                      {adminUser.role !== 'Viewer' && (
+                        <div className="lg:col-span-1">
+                          <form onSubmit={addEvent} className="card p-6 space-y-4 sticky top-24">
+                            <h3 className="font-bold flex items-center justify-between gap-2">
+                              <div className="flex items-center gap-2"><Plus size={18} /> Add Event</div>
+                              <div className="group/tip relative">
+                                <HelpCircle size={14} className="text-slate-300 hover:text-emerald-500 cursor-help" />
+                                <div className="absolute bottom-full right-0 mb-2 w-48 p-2 bg-slate-900 text-[10px] text-white rounded-lg opacity-0 invisible group-hover/tip:opacity-100 group-hover/tip:visible transition-all shadow-xl z-50 pointer-events-none">
+                                  Events appear in chronological order on the public events section.
+                                </div>
+                              </div>
+                            </h3>
+                            <input type="text" placeholder="Title (EN)" required value={newEvent.title_en} onChange={e => setNewEvent({...newEvent, title_en: e.target.value})} className="w-full px-4 py-2 rounded-lg border border-slate-200 text-sm" />
+                            <input type="text" placeholder="Title (BN)" required value={newEvent.title_bn} onChange={e => setNewEvent({...newEvent, title_bn: e.target.value})} className="w-full px-4 py-2 rounded-lg border border-slate-200 text-sm" />
+                            <textarea placeholder="Description (EN)" required rows={3} value={newEvent.description_en} onChange={e => setNewEvent({...newEvent, description_en: e.target.value})} className="w-full px-4 py-2 rounded-lg border border-slate-200 text-sm"></textarea>
+                            <textarea placeholder="Description (BN)" required rows={3} value={newEvent.description_bn} onChange={e => setNewEvent({...newEvent, description_bn: e.target.value})} className="w-full px-4 py-2 rounded-lg border border-slate-200 text-sm"></textarea>
+                            <input type="date" required value={newEvent.event_date} onChange={e => setNewEvent({...newEvent, event_date: e.target.value})} className="w-full px-4 py-2 rounded-lg border border-slate-200 text-sm" />
+                            <input type="text" placeholder="Location (EN)" required value={newEvent.location_en} onChange={e => setNewEvent({...newEvent, location_en: e.target.value})} className="w-full px-4 py-2 rounded-lg border border-slate-200 text-sm" />
+                            <input type="text" placeholder="Location (BN)" required value={newEvent.location_bn} onChange={e => setNewEvent({...newEvent, location_bn: e.target.value})} className="w-full px-4 py-2 rounded-lg border border-slate-200 text-sm" />
+                            <input type="file" accept="image/*" onChange={e => handlePhotoUpload(e, (val) => setNewEvent({...newEvent, image: val}))} className="text-xs" />
+                            <button type="submit" className="w-full btn-primary">Create Event</button>
+                          </form>
+                        </div>
+                      )}
+                      <div className={adminUser.role === 'Viewer' ? 'lg:col-span-3 space-y-4' : 'lg:col-span-2 space-y-4'}>
+                        {events.map(event => (
+                          <div key={event.id} className="card p-4 flex gap-4">
+                            <div className="w-24 h-24 bg-slate-100 rounded-lg overflow-hidden flex-shrink-0">
+                              {event.image && <img src={event.image} className="w-full h-full object-cover" />}
+                            </div>
+                            <div className="flex-grow">
+                              <h4 className="font-bold">{event.title_bn}</h4>
+                              <p className="text-xs text-slate-500 mt-1">{new Date(event.event_date).toLocaleDateString()} • {event.location_bn}</p>
+                              <div className="flex items-center gap-2 mt-2">
+                                {adminUser.role !== 'Viewer' && (
+                                  <div className="flex items-center gap-2">
+                                    <button onClick={() => setEditingEvent(event)} className="text-emerald-600 hover:text-emerald-700 p-1"><Pencil size={14} /></button>
+                                    <button onClick={() => setDeleteConfirm({ id: event.id, type: 'event' })} className="text-red-600 hover:text-red-700 p-1"><Trash2 size={14} /></button>
+                                  </div>
                                 )}
                               </div>
                             </div>
@@ -1417,7 +2093,17 @@ export default function App() {
                     <div className="grid lg:grid-cols-3 gap-8">
                       <div className="lg:col-span-1">
                         <form onSubmit={addAdminUser} className="card p-6 space-y-4 sticky top-24">
-                          <h3 className="font-bold flex items-center gap-2"><Plus size={18} /> Add Admin User</h3>
+                            <h3 className="font-bold flex items-center justify-between gap-2">
+                              <div className="flex items-center gap-2"><Plus size={18} /> Add Admin User</div>
+                              <div className="group/tip relative">
+                                <HelpCircle size={14} className="text-slate-300 hover:text-emerald-500 cursor-help" />
+                                <div className="absolute bottom-full right-0 mb-2 w-48 p-2 bg-slate-900 text-[10px] text-white rounded-lg opacity-0 invisible group-hover/tip:opacity-100 group-hover/tip:visible transition-all shadow-xl z-50 pointer-events-none">
+                                  <p><span className="text-emerald-400">SuperAdmin:</span> All features</p>
+                                  <p><span className="text-blue-300">Editor:</span> Manage content only</p>
+                                  <p><span className="text-slate-400">Viewer:</span> Read only access</p>
+                                </div>
+                              </div>
+                            </h3>
                           <input type="text" placeholder="Username" required value={newUser.username} onChange={e => setNewUser({...newUser, username: e.target.value})} className="w-full px-4 py-2 rounded-lg border border-slate-200 text-sm" />
                           <input type="password" placeholder="Password" required value={newUser.password} onChange={e => setNewUser({...newUser, password: e.target.value})} className="w-full px-4 py-2 rounded-lg border border-slate-200 text-sm" />
                           <select value={newUser.role} onChange={e => setNewUser({...newUser, role: e.target.value as any})} className="w-full px-4 py-2 rounded-lg border border-slate-200 text-sm">
@@ -1509,6 +2195,7 @@ export default function App() {
                   onClick={() => {
                     if (deleteConfirm.type === 'news') deleteNews(deleteConfirm.id);
                     if (deleteConfirm.type === 'gallery') deleteGallery(deleteConfirm.id);
+                    if (deleteConfirm.type === 'event') deleteEvent(deleteConfirm.id);
                     if (deleteConfirm.type === 'user') deleteAdminUser(deleteConfirm.id);
                   }}
                   className="flex-1 px-4 py-2 rounded-xl bg-red-600 text-white font-bold hover:bg-red-700 transition-colors"
@@ -1521,7 +2208,149 @@ export default function App() {
         )}
       </AnimatePresence>
 
-      <footer className="bg-slate-900 text-slate-400 py-12 no-print">
+      {/* Edit News Modal */}
+      <AnimatePresence>
+        {editingNews && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setEditingNews(null)} className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" />
+            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="relative bg-white rounded-2xl shadow-2xl p-8 max-w-lg w-full space-y-6">
+              <h3 className="text-xl font-bold flex items-center gap-2"><Pencil size={20} className="text-emerald-600" /> Edit News</h3>
+              <form onSubmit={updateNews} className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <input type="text" placeholder="Title (EN)" required value={editingNews.title_en} onChange={e => setEditingNews({...editingNews, title_en: e.target.value})} className="w-full px-4 py-2 rounded-lg border border-slate-200 text-sm" />
+                  <input type="text" placeholder="Title (BN)" required value={editingNews.title_bn} onChange={e => setEditingNews({...editingNews, title_bn: e.target.value})} className="w-full px-4 py-2 rounded-lg border border-slate-200 text-sm" />
+                </div>
+                <textarea placeholder="Content (EN)" required rows={4} value={editingNews.content_en} onChange={e => setEditingNews({...editingNews, content_en: e.target.value})} className="w-full px-4 py-2 rounded-lg border border-slate-200 text-sm"></textarea>
+                <textarea placeholder="Content (BN)" required rows={4} value={editingNews.content_bn} onChange={e => setEditingNews({...editingNews, content_bn: e.target.value})} className="w-full px-4 py-2 rounded-lg border border-slate-200 text-sm"></textarea>
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 mb-1">Update Image</label>
+                  <input type="file" accept="image/*" onChange={e => handlePhotoUpload(e, (val) => setEditingNews({...editingNews, image: val}))} className="text-xs" />
+                </div>
+                <div className="flex gap-3 pt-2">
+                  <button type="submit" className="flex-1 btn-primary py-3">Save Changes</button>
+                  <button type="button" onClick={() => setEditingNews(null)} className="flex-1 bg-slate-100 text-slate-600 rounded-xl font-bold hover:bg-slate-200 transition-colors">Cancel</button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Edit Gallery Modal */}
+      <AnimatePresence>
+        {editingGallery && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setEditingGallery(null)} className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" />
+            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="relative bg-white rounded-2xl shadow-2xl p-8 max-w-md w-full space-y-6">
+              <h3 className="text-xl font-bold flex items-center gap-2"><Pencil size={20} className="text-emerald-600" /> Edit Gallery Item</h3>
+              <form onSubmit={updateGallery} className="space-y-4">
+                <input type="text" placeholder="Caption (EN)" required value={editingGallery.caption_en} onChange={e => setEditingGallery({...editingGallery, caption_en: e.target.value})} className="w-full px-4 py-2 rounded-lg border border-slate-200 text-sm" />
+                <input type="text" placeholder="Caption (BN)" required value={editingGallery.caption_bn} onChange={e => setEditingGallery({...editingGallery, caption_bn: e.target.value})} className="w-full px-4 py-2 rounded-lg border border-slate-200 text-sm" />
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 mb-1">Update Image</label>
+                  <input type="file" accept="image/*" onChange={e => handlePhotoUpload(e, (val) => setEditingGallery({...editingGallery, image: val}))} className="text-xs" />
+                </div>
+                <div className="flex gap-3 pt-2">
+                  <button type="submit" className="flex-1 btn-primary py-3">Save Changes</button>
+                  <button type="button" onClick={() => setEditingGallery(null)} className="flex-1 bg-slate-100 text-slate-600 rounded-xl font-bold hover:bg-slate-200 transition-colors">Cancel</button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Edit Event Modal */}
+      <AnimatePresence>
+        {editingEvent && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setEditingEvent(null)} className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" />
+            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="relative bg-white rounded-2xl shadow-2xl p-8 max-w-lg w-full space-y-6">
+              <h3 className="text-xl font-bold flex items-center gap-2"><Pencil size={20} className="text-emerald-600" /> Edit Event</h3>
+              <form onSubmit={updateEvent} className="space-y-4 text-slate-800">
+                <div className="grid grid-cols-2 gap-4">
+                  <input type="text" placeholder="Title (EN)" required value={editingEvent.title_en} onChange={e => setEditingEvent({...editingEvent, title_en: e.target.value})} className="w-full px-4 py-2 rounded-lg border border-slate-200 text-sm" />
+                  <input type="text" placeholder="Title (BN)" required value={editingEvent.title_bn} onChange={e => setEditingEvent({...editingEvent, title_bn: e.target.value})} className="w-full px-4 py-2 rounded-lg border border-slate-200 text-sm" />
+                </div>
+                <textarea placeholder="Description (EN)" required rows={3} value={editingEvent.description_en} onChange={e => setEditingEvent({...editingEvent, description_en: e.target.value})} className="w-full px-4 py-2 rounded-lg border border-slate-200 text-sm"></textarea>
+                <textarea placeholder="Description (BN)" required rows={3} value={editingEvent.description_bn} onChange={e => setEditingEvent({...editingEvent, description_bn: e.target.value})} className="w-full px-4 py-2 rounded-lg border border-slate-200 text-sm"></textarea>
+                <div className="grid grid-cols-1 gap-4">
+                  <input type="date" required value={editingEvent.event_date} onChange={e => setEditingEvent({...editingEvent, event_date: e.target.value})} className="w-full px-4 py-2 rounded-lg border border-slate-200 text-sm" />
+                  <div className="grid grid-cols-2 gap-4">
+                    <input type="text" placeholder="Location (EN)" required value={editingEvent.location_en} onChange={e => setEditingEvent({...editingEvent, location_en: e.target.value})} className="w-full px-4 py-2 rounded-lg border border-slate-200 text-sm" />
+                    <input type="text" placeholder="Location (BN)" required value={editingEvent.location_bn} onChange={e => setEditingEvent({...editingEvent, location_bn: e.target.value})} className="w-full px-4 py-2 rounded-lg border border-slate-200 text-sm" />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 mb-1">Update Image</label>
+                  <input type="file" accept="image/*" onChange={e => handlePhotoUpload(e, (val) => setEditingEvent({...editingEvent, image: val}))} className="text-xs" />
+                </div>
+                <div className="flex gap-3 pt-2">
+                  <button type="submit" className="flex-1 btn-primary py-3">Save Changes</button>
+                  <button type="button" onClick={() => setEditingEvent(null)} className="flex-1 bg-slate-100 text-slate-600 rounded-xl font-bold hover:bg-slate-200 transition-colors">Cancel</button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Share Modal */}
+      <AnimatePresence>
+        {activeShareItem && (
+          <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setActiveShareItem(null)} className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" />
+            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="relative bg-white dark:bg-slate-800 rounded-3xl shadow-2xl p-8 max-w-sm w-full space-y-6">
+              <h3 className="text-xl font-black text-slate-900 dark:text-white flex items-center gap-2">
+                <Share2 size={24} className="text-emerald-500" /> Share This
+              </h3>
+              <div className="grid grid-cols-3 gap-4">
+                {[
+                  { id: 'facebook', icon: Facebook, color: 'hover:bg-blue-50 text-blue-600', label: 'Facebook' },
+                  { id: 'twitter', icon: Twitter, color: 'hover:bg-slate-50 text-slate-900', label: 'Twitter' },
+                  { id: 'whatsapp', icon: MessageCircle, color: 'hover:bg-emerald-50 text-emerald-600', label: 'WhatsApp' }
+                ].map(platform => (
+                  <button
+                    key={platform.id}
+                    onClick={() => handleSocialShare(platform.id as any)}
+                    className={`flex flex-col items-center gap-2 p-4 rounded-2xl transition-all duration-300 ${platform.color}`}
+                  >
+                    <div className="p-3 bg-white dark:bg-slate-700 rounded-xl shadow-sm"><platform.icon size={24} /></div>
+                    <span className="text-[10px] font-black uppercase tracking-widest">{platform.label}</span>
+                  </button>
+                ))}
+              </div>
+              <div className="pt-4 border-t border-slate-100 dark:border-slate-700">
+                <button 
+                  onClick={() => { navigator.clipboard.writeText(activeShareItem.url); showToast('Link copied!'); setActiveShareItem(null); }}
+                  className="w-full py-4 rounded-xl bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 font-bold flex items-center justify-center gap-2 hover:bg-slate-200"
+                >
+                  <Link2 size={18} /> Copy Direct Link
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Global Toast */}
+      <AnimatePresence>
+        {toast && (
+          <motion.div
+            initial={{ opacity: 0, y: 100, x: '-50%' }}
+            animate={{ opacity: 1, y: -20, x: '-50%' }}
+            exit={{ opacity: 0, y: 100, x: '-50%' }}
+            className={`fixed bottom-0 left-1/2 z-[120] px-6 py-3 rounded-2xl shadow-2xl flex items-center gap-3 backdrop-blur-md ${
+              toast.type === 'success' ? 'bg-emerald-600/90 text-white' : 'bg-red-600/90 text-white'
+            }`}
+          >
+            {toast.type === 'success' ? <CheckCircle2 size={18} /> : <AlertCircle size={18} />}
+            <span className="font-bold text-sm">{toast.message}</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <footer className={`${darkMode ? 'bg-slate-900 border-t border-slate-800' : 'bg-slate-900'} text-slate-400 py-12 no-print`}>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center space-y-4">
           <div className="flex justify-center gap-2 items-center mb-4">
             <div className="w-8 h-8 bg-emerald-600 rounded-lg flex items-center justify-center text-white font-bold">29</div>

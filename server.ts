@@ -55,6 +55,19 @@ db.exec(`
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
 
+  CREATE TABLE IF NOT EXISTS events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title_en TEXT,
+    title_bn TEXT,
+    description_en TEXT,
+    description_bn TEXT,
+    event_date TEXT,
+    location_en TEXT,
+    location_bn TEXT,
+    image TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
   CREATE TABLE IF NOT EXISTS gallery (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     caption_en TEXT,
@@ -296,6 +309,49 @@ async function startServer() {
     res.json({ success: true });
   });
 
+  app.put("/api/admin/news/:id", (req, res) => {
+    const { title_en, title_bn, content_en, content_bn, image } = req.body;
+    try {
+      db.prepare(`
+        UPDATE news 
+        SET title_en = ?, title_bn = ?, content_en = ?, content_bn = ?, image = ? 
+        WHERE id = ?
+      `).run(title_en, title_bn, content_en, content_bn, image, req.params.id);
+      res.json({ success: true });
+    } catch (error) {
+      res.status(400).json({ error: "Failed to update news" });
+    }
+  });
+
+  app.get("/api/events", (req, res) => {
+    const events = db.prepare("SELECT * FROM events ORDER BY event_date ASC").all();
+    res.json(events);
+  });
+
+  app.post("/api/admin/events", (req, res) => {
+    const { title_en, title_bn, description_en, description_bn, event_date, location_en, location_bn, image } = req.body;
+    db.prepare(`
+      INSERT INTO events (title_en, title_bn, description_en, description_bn, event_date, location_en, location_bn, image) 
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(title_en, title_bn, description_en, description_bn, event_date, location_en, location_bn, image);
+    res.json({ success: true });
+  });
+
+  app.put("/api/admin/events/:id", (req, res) => {
+    const { title_en, title_bn, description_en, description_bn, event_date, location_en, location_bn, image } = req.body;
+    db.prepare(`
+      UPDATE events 
+      SET title_en = ?, title_bn = ?, description_en = ?, description_bn = ?, event_date = ?, location_en = ?, location_bn = ?, image = ? 
+      WHERE id = ?
+    `).run(title_en, title_bn, description_en, description_bn, event_date, location_en, location_bn, image, req.params.id);
+    res.json({ success: true });
+  });
+
+  app.delete("/api/admin/events/:id", (req, res) => {
+    db.prepare("DELETE FROM events WHERE id = ?").run(req.params.id);
+    res.json({ success: true });
+  });
+
   app.get("/api/gallery", (req, res) => {
     const gallery = db.prepare("SELECT * FROM gallery ORDER BY created_at DESC").all();
     res.json(gallery);
@@ -312,6 +368,20 @@ async function startServer() {
     res.json({ success: true });
   });
 
+  app.put("/api/admin/gallery/:id", (req, res) => {
+    const { caption_en, caption_bn, image } = req.body;
+    try {
+      db.prepare(`
+        UPDATE gallery 
+        SET caption_en = ?, caption_bn = ?, image = ? 
+        WHERE id = ?
+      `).run(caption_en, caption_bn, image, req.params.id);
+      res.json({ success: true });
+    } catch (error) {
+      res.status(400).json({ error: "Failed to update gallery item" });
+    }
+  });
+
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
@@ -320,9 +390,10 @@ async function startServer() {
     });
     app.use(vite.middlewares);
   } else {
-    app.use(express.static(path.join(__dirname, "dist")));
+    const distPath = path.join(process.cwd(), "dist");
+    app.use(express.static(distPath));
     app.get("*", (req, res) => {
-      res.sendFile(path.join(__dirname, "dist", "index.html"));
+      res.sendFile(path.join(distPath, "index.html"));
     });
   }
 
