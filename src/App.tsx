@@ -33,8 +33,16 @@ import {
   Shield,
   FileText,
   ChevronDown,
-  Mail
+  Mail,
+  Send,
+  Sparkles,
+  UserCheck,
+  User,
+  Edit3,
+  Users,
+  Phone
 } from 'lucide-react';
+import { GoogleGenAI } from "@google/genai";
 import { translations } from './translations';
 import QRCode from 'qrcode';
 
@@ -115,6 +123,32 @@ interface AdminUser {
   role: 'Viewer' | 'Editor' | 'SuperAdmin';
 }
 
+interface Councilor {
+  id: number;
+  name_en: string;
+  name_bn: string;
+  career_en: string;
+  career_bn: string;
+  education_en: string;
+  education_bn: string;
+  social_service_en: string;
+  social_service_bn: string;
+  photo: string;
+  last_updated: string;
+}
+
+interface CouncilMember {
+  id: number;
+  name_en: string;
+  name_bn: string;
+  position_en: string;
+  position_bn: string;
+  phone: string;
+  email: string;
+  photo: string;
+  created_at: string;
+}
+
 export default function App() {
   const [lang, setLang] = useState<Language>('bn');
   const [activeTab, setActiveTab] = useState('home');
@@ -155,13 +189,16 @@ export default function App() {
   const [adminUsername, setAdminUsername] = useState('');
   const [adminPassword, setAdminPassword] = useState('');
   const [adminLoginError, setAdminLoginError] = useState('');
-  const [adminSubTab, setAdminSubTab] = useState<'volunteers' | 'complaints' | 'news' | 'gallery' | 'events' | 'users'>('volunteers');
+  const [adminSubTab, setAdminSubTab] = useState<'volunteers' | 'complaints' | 'news' | 'gallery' | 'events' | 'users' | 'councilor' | 'voters' | 'council-members'>('volunteers');
   const [volunteers, setVolunteers] = useState<Volunteer[]>([]);
   const [adminComplaints, setAdminComplaints] = useState<Complaint[]>([]);
   const [news, setNews] = useState<NewsItem[]>([]);
   const [gallery, setGallery] = useState<GalleryItem[]>([]);
   const [events, setEvents] = useState<EventItem[]>([]);
   const [adminUsers, setAdminUsers] = useState<AdminUser[]>([]);
+  const [adminVoters, setAdminVoters] = useState<Voter[]>([]);
+  const [councilorProfile, setCouncilorProfile] = useState<Councilor | null>(null);
+  const [councilMembers, setCouncilMembers] = useState<CouncilMember[]>([]);
 
   // Admin Form States
   const [newNews, setNewNews] = useState({ title_en: '', title_bn: '', content_en: '', content_bn: '', image: '' });
@@ -172,8 +209,16 @@ export default function App() {
   const [editingEvent, setEditingEvent] = useState<EventItem | null>(null);
   const [editingComplaint, setEditingComplaint] = useState<{ id: number, status: string, admin_note: string } | null>(null);
   const [newUser, setNewUser] = useState({ username: '', password: '', role: 'Viewer' as const });
-  const [deleteConfirm, setDeleteConfirm] = useState<{ id: number, type: 'news' | 'gallery' | 'event' | 'user' } | null>(null);
+  const [newVoter, setNewVoter] = useState<Partial<Voter>>({ nid: '', dob: '', name_en: '', name_bn: '', father_name: '', mother_name: '', address: '', serial_no: '', polling_center_en: '', polling_center_bn: '', booth_no: '', photo: '' });
+  const [editingVoter, setEditingVoter] = useState<Voter | null>(null);
+  const [editCouncilor, setEditCouncilor] = useState<Councilor | null>(null);
+  const [newCouncilMember, setNewCouncilMember] = useState({ name_en: '', name_bn: '', position_en: '', position_bn: '', phone: '', email: '', photo: '' });
+  const [deleteConfirm, setDeleteConfirm] = useState<{ id: number, type: 'news' | 'gallery' | 'event' | 'user' | 'voter' | 'council-member' } | null>(null);
   const [shareToast, setShareToast] = useState<string | null>(null);
+
+  // Advanced Search Filter States
+  const [advVolSearch, setAdvVolSearch] = useState({ query: '', phone: '', from: '', to: '' });
+  const [advCompSearch, setAdvCompSearch] = useState({ query: '', phone: '', from: '', to: '', status: '' });
 
   // New States
   const [darkMode, setDarkMode] = useState(false);
@@ -187,7 +232,7 @@ export default function App() {
     const [timeLeft, setTimeLeft] = useState({ days: 0, hours: 0, minutes: 0 });
 
     useEffect(() => {
-      const targetDate = new Date('2024-12-01T08:00:00');
+      const targetDate = new Date('2026-12-01T08:00:00');
       const timer = setInterval(() => {
         const now = new Date();
         const difference = targetDate.getTime() - now.getTime();
@@ -291,61 +336,83 @@ export default function App() {
     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="max-w-4xl mx-auto space-y-8">
       <div className="text-center space-y-2">
         <h2 className="text-3xl font-black text-slate-900 dark:text-white">{t.nav.birthVerify}</h2>
-        <p className="text-slate-500 font-medium">Verify birth registration records via the official government portal.</p>
+        <p className="text-slate-500 font-medium">Connect to the official central database for record verification.</p>
       </div>
 
-      <div className={`card overflow-hidden border-2 border-emerald-500 ${darkMode ? 'bg-slate-800' : 'bg-white'}`}>
-        <div className="bg-emerald-600 p-4 text-white flex justify-between items-center">
-          <div className="flex items-center gap-3">
-            <Info size={20} />
-            <span className="font-bold text-sm tracking-tight">Official BDRIS Verification Portal</span>
+      <div className={`card overflow-hidden border-2 border-emerald-500 ${darkMode ? 'bg-slate-800' : 'bg-white'} shadow-2xl`}>
+        <div className="bg-emerald-600 p-6 text-white flex flex-col md:flex-row justify-between items-center gap-6">
+          <div className="flex items-center gap-4">
+            <div className="bg-white/20 p-3 rounded-2xl backdrop-blur-md">
+              <ShieldCheck size={32} />
+            </div>
+            <div>
+              <h3 className="text-xl font-black leading-tight">Official BDRIS Portal Access</h3>
+              <p className="text-xs font-bold text-white/80 uppercase tracking-widest mt-1">Government of Bangladesh</p>
+            </div>
           </div>
           <a 
             href="https://everify.bdris.gov.bd/" 
             target="_blank" 
             rel="noopener noreferrer"
-            className="bg-white/20 hover:bg-white/30 p-2 rounded-lg transition-colors flex items-center gap-2 text-xs font-black uppercase"
+            className="w-full md:w-auto bg-white text-emerald-600 px-8 py-4 rounded-2xl font-black uppercase tracking-tight flex items-center justify-center gap-3 hover:bg-emerald-50 transition-all shadow-xl group"
           >
-            Open Separately <ExternalLink size={14} />
+            Launch Official Portal <ExternalLink size={20} className="group-hover:translate-x-1 group-hover:-translate-y-1 transition-transform" />
           </a>
         </div>
         
-        <div className="aspect-[4/3] md:aspect-video w-full bg-slate-50 relative">
-          <iframe 
-            src="https://everify.bdris.gov.bd/" 
-            className="w-full h-full border-none"
-            title="BDRIS Verification"
-          />
-          {/* Overlay to inform users if loading is slow */}
-          <div className="absolute bottom-4 left-4 right-4 p-3 bg-white/90 backdrop-blur-sm rounded-xl border border-emerald-100 shadow-xl flex items-center gap-3 text-[10px] md:text-xs font-bold text-slate-600">
-            <AlertCircle size={16} className="text-emerald-500" />
-            Note: This portal is managed by the central government. Please ensure you have the 17-digit BRN ready.
+        <div className="p-8 grid md:grid-cols-3 gap-8">
+          <div className="md:col-span-2 space-y-6">
+            <div className="p-6 bg-amber-50 dark:bg-amber-900/20 border-2 border-amber-100 dark:border-amber-900/30 rounded-2xl space-y-3">
+              <h4 className="font-black text-amber-700 dark:text-amber-400 flex items-center gap-2">
+                <AlertCircle size={18} /> Connectivity Note
+              </h4>
+              <p className="text-sm font-medium text-amber-600/80 dark:text-amber-400/80 leading-relaxed">
+                The external government portal prohibits direct embedding within other websites for security reasons. Click the button above to safely open the verification portal in a new browser tab.
+              </p>
+            </div>
+
+            <div className="space-y-4">
+              <h4 className={`font-black flex items-center gap-2 ${darkMode ? 'text-white' : 'text-slate-900'}`}>
+                <FileText size={18} className="text-emerald-500" /> Steps to Verify
+              </h4>
+              <div className="space-y-3">
+                {[
+                  { step: "1", text: "Open the official portal using the button above." },
+                  { step: "2", text: "Enter your 17-digit Birth Registration Number (BRN)." },
+                  { step: "3", text: "Select your Date of Birth from the calendar." },
+                  { step: "4", text: "Complete the mathematical CAPTCHA and click 'Search'." }
+                ].map((s, i) => (
+                  <div key={i} className="flex items-center gap-4">
+                    <span className="w-8 h-8 rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400 flex items-center justify-center font-black text-xs shrink-0">{s.step}</span>
+                    <p className={`text-sm font-bold ${darkMode ? 'text-slate-400' : 'text-slate-600'}`}>{s.text}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-6">
+            <div className={`p-6 rounded-2xl border-2 border-dashed ${darkMode ? 'border-slate-700 bg-slate-800/50' : 'border-slate-200 bg-slate-50'} space-y-4`}>
+              <h4 className={`font-black flex items-center gap-2 ${darkMode ? 'text-white' : 'text-slate-900'}`}>
+                <HelpCircle size={18} className="text-emerald-500" /> Requirements
+              </h4>
+              <ul className="space-y-3 text-xs font-bold text-slate-500">
+                <li className="flex gap-2">
+                  <CheckCircle2 size={16} className="text-emerald-500 shrink-0" /> 
+                  17-digit BRN
+                </li>
+                <li className="flex gap-2">
+                  <CheckCircle2 size={16} className="text-emerald-500 shrink-0" /> 
+                  Accurate DOB
+                </li>
+                <li className="flex gap-2">
+                  <CheckCircle2 size={16} className="text-emerald-500 shrink-0" /> 
+                  Captcha Entry
+                </li>
+              </ul>
+            </div>
           </div>
         </div>
-      </div>
-
-      <div className={`p-6 rounded-2xl border-2 border-dashed ${darkMode ? 'border-slate-700 bg-slate-800/50' : 'border-slate-200 bg-slate-50'} space-y-4`}>
-        <h4 className={`font-black flex items-center gap-2 ${darkMode ? 'text-white' : 'text-slate-900'}`}>
-          <HelpCircle size={18} className="text-emerald-500" /> Requirements
-        </h4>
-        <ul className="grid md:grid-cols-2 gap-4 text-sm font-medium text-slate-500">
-          <li className="flex gap-2">
-            <CheckCircle2 size={16} className="text-emerald-500 shrink-0" /> 
-            17-digit Birth Registration Number (BRN)
-          </li>
-          <li className="flex gap-2">
-            <CheckCircle2 size={16} className="text-emerald-500 shrink-0" /> 
-            Correct Date of Birth (YYYY-MM-DD)
-          </li>
-          <li className="flex gap-2">
-            <CheckCircle2 size={16} className="text-emerald-500 shrink-0" /> 
-            Security Captcha Completion
-          </li>
-          <li className="flex gap-2">
-            <CheckCircle2 size={16} className="text-emerald-500 shrink-0" /> 
-            Stable Internet Connection
-          </li>
-        </ul>
       </div>
     </motion.div>
   );
@@ -426,6 +493,80 @@ export default function App() {
     });
   };
 
+  const CouncilorProfileSection = () => {
+    if (!councilorProfile) return (
+      <div className="flex animate-pulse space-x-4 max-w-4xl mx-auto py-12">
+        <div className="rounded-full bg-slate-200 h-20 w-20"></div>
+        <div className="flex-1 space-y-6 py-1">
+          <div className="h-2 bg-slate-200 rounded"></div>
+          <div className="space-y-3">
+            <div className="grid grid-cols-3 gap-4">
+              <div className="h-2 bg-slate-200 rounded col-span-2"></div>
+              <div className="h-2 bg-slate-200 rounded col-span-1"></div>
+            </div>
+            <div className="h-2 bg-slate-200 rounded"></div>
+          </div>
+        </div>
+      </div>
+    );
+
+    return (
+      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="max-w-4xl mx-auto space-y-12 py-8">
+        <div className="grid md:grid-cols-3 gap-8 items-start">
+          <div className="md:col-span-1 space-y-6">
+            <div className="card overflow-hidden border-4 border-emerald-500 shadow-2xl skew-y-1 hover:skew-y-0 transition-transform duration-500">
+              {councilorProfile.photo ? (
+                <img src={councilorProfile.photo} className="w-full aspect-[3/4] object-cover" alt={councilorProfile.name_en} />
+              ) : (
+                <div className="w-full aspect-[3/4] bg-slate-100 flex items-center justify-center text-slate-300">
+                  <ShieldCheck size={80} />
+                </div>
+              )}
+              <div className="p-4 bg-emerald-600 text-white text-center">
+                <h3 className="text-xl font-black">{lang === 'bn' ? councilorProfile.name_bn : councilorProfile.name_en}</h3>
+                <p className="text-[10px] uppercase font-black tracking-[0.2em] opacity-80 mt-1">Ward Councilor, Ward 29</p>
+              </div>
+            </div>
+
+            <div className={`card p-6 space-y-4 ${darkMode ? 'bg-slate-800' : 'bg-white'}`}>
+              <h4 className="text-xs font-black text-emerald-500 uppercase tracking-widest flex items-center gap-2">
+                <FileText size={14} /> {lang === 'bn' ? 'শিক্ষাগত যোগ্যতা' : 'Education'}
+              </h4>
+              <p className={`text-sm font-bold leading-relaxed ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>
+                {lang === 'bn' ? councilorProfile.education_bn : councilorProfile.education_en}
+              </p>
+            </div>
+          </div>
+
+          <div className="md:col-span-2 space-y-8">
+            <div className="space-y-4">
+              <h3 className={`text-3xl font-black ${darkMode ? 'text-white' : 'text-slate-900'}`}>
+                {lang === 'bn' ? 'রাজনৈতিক প্রোফাইল' : 'Political Career'}
+              </h3>
+              <div className="w-20 h-2 bg-emerald-500 rounded-full"></div>
+              <p className={`text-lg font-medium leading-relaxed whitespace-pre-wrap ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>
+                {lang === 'bn' ? councilorProfile.career_bn : councilorProfile.career_en}
+              </p>
+            </div>
+
+            <div className={`p-8 rounded-3xl border-2 border-dashed ${darkMode ? 'bg-slate-800/50 border-slate-700' : 'bg-emerald-50/50 border-emerald-100'} space-y-6`}>
+              <h3 className={`text-2xl font-black flex items-center gap-3 ${darkMode ? 'text-emerald-400' : 'text-emerald-600'}`}>
+                <Sparkles size={24} /> {lang === 'bn' ? 'সামাজিক সেবা ও অবদান' : 'Social Service & Contributions'}
+              </h3>
+              <p className={`text-base font-bold leading-relaxed whitespace-pre-wrap ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>
+                {lang === 'bn' ? councilorProfile.social_service_bn : councilorProfile.social_service_en}
+              </p>
+            </div>
+
+            <div className="flex items-center gap-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">
+              <span>Last Updated: {new Date(councilorProfile.last_updated).toLocaleDateString()}</span>
+            </div>
+          </div>
+        </div>
+      </motion.div>
+    );
+  };
+
   const NavItem: React.FC<{ item: any }> = ({ item }) => {
     const [isOpen, setIsOpen] = useState(false);
 
@@ -485,6 +626,7 @@ export default function App() {
 
   const menuStructure = [
     { key: 'home', label: t.nav.home },
+    { key: 'councilor', label: t.nav.councilor },
     { 
       label: t.nav.services,
       items: [
@@ -505,6 +647,7 @@ export default function App() {
     {
       label: t.nav.support,
       items: [
+        { key: 'councilMembers', label: t.nav.councilMembers, icon: Users },
         { key: 'about', label: t.nav.about, icon: Info },
         { key: 'contact', label: t.nav.contact, icon: Mail },
         { key: 'privacy', label: t.nav.privacy, icon: Shield },
@@ -527,6 +670,24 @@ export default function App() {
     
     setActiveShareItem({ title, text, url });
   };
+
+  const fetchCouncilorProfile = async () => {
+    try {
+      const res = await fetch('/api/councilor');
+      if (res.ok) {
+        const data = await res.json();
+        setCouncilorProfile(data);
+        setEditCouncilor(data);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  useEffect(() => {
+    fetchAdminData();
+    fetchCouncilorProfile();
+  }, []);
 
   const [activeShareItem, setActiveShareItem] = useState<{title: string, text: string, url: string} | null>(null);
 
@@ -567,6 +728,48 @@ export default function App() {
   };
 
   const [isBirthLoading, setIsBirthLoading] = useState(false);
+
+  const [isChatOpen, setIsChatOpen] = useState(false);
+  const [chatMessages, setChatMessages] = useState<{ role: 'user' | 'ai', content: string }[]>([
+    { role: 'ai', content: lang === 'bn' ? 'আসসালামু আলাইকুম! আমি আপনার ডিজিটাল সাহায্যকারী। আমি আপনাকে কীভাবে সাহায্য করতে পারি?' : 'Assalamu Alaikum! I am your Digital Assistant. How can I help you today?' }
+  ]);
+  const [chatInput, setChatInput] = useState('');
+  const [isAiTyping, setIsAiTyping] = useState(false);
+
+  const handleSendMessage = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!chatInput.trim() || isAiTyping) return;
+
+    const userMessage = chatInput.trim();
+    setChatInput('');
+    setChatMessages(prev => [...prev, { role: 'user', content: userMessage }]);
+    setIsAiTyping(true);
+
+    try {
+      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+      const response = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: [
+          { role: 'user', parts: [{ text: userMessage }] }
+        ],
+        config: {
+          systemInstruction: `You are a helpful Digital Union Parishad Assistant for residents of Bangladesh. 
+          Provide accurate information about citizen services like Birth Registration (BDRIS), Voter Slip/NID verification, volunteer registration (at Digital Union), and complaint filing. 
+          The Digital Union Parishad provides online verification for NID (Voter Slip), links to BDRIS for Birth Verification, and handles local community reports.
+          Respond in ${lang === 'bn' ? 'Bengali' : 'English'}. Keep responses concise, professional, and friendly. 
+          If you don't know something about a specific local union, advise them to visit the local Union Parishad office.`
+        }
+      });
+      
+      const aiResponse = response.text || (lang === 'bn' ? "দুঃখিত, আমি এই মুহূর্তে উত্তর দিতে পারছি না।" : "Sorry, I couldn't process that request.");
+      setChatMessages(prev => [...prev, { role: 'ai', content: aiResponse }]);
+    } catch (err) {
+      console.error(err);
+      setChatMessages(prev => [...prev, { role: 'ai', content: lang === 'bn' ? "সংযোগ ত্রুটি। আবার চেষ্টা করুন।" : "Connection error. Please try again." }]);
+    } finally {
+      setIsAiTyping(false);
+    }
+  };
 
   const handleBirthVerify = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -706,13 +909,15 @@ export default function App() {
 
   const fetchAdminData = async () => {
     try {
-      const [vRes, cRes, nRes, gRes, eRes, uRes] = await Promise.all([
+      const [vRes, cRes, nRes, gRes, eRes, uRes, vtRes, cmRes] = await Promise.all([
         fetch('/api/volunteers'),
         fetch('/api/admin/complaints'),
         fetch('/api/news'),
         fetch('/api/gallery'),
         fetch('/api/events'),
-        fetch('/api/admin/users')
+        fetch('/api/admin/users'),
+        fetch('/api/admin/voters'),
+        fetch('/api/admin/council-members')
       ]);
       if (vRes.ok) setVolunteers(await vRes.json());
       if (cRes.ok) setAdminComplaints(await cRes.json());
@@ -720,6 +925,93 @@ export default function App() {
       if (gRes.ok) setGallery(await gRes.json());
       if (eRes.ok) setEvents(await eRes.json());
       if (uRes.ok) setAdminUsers(await uRes.json());
+      if (vtRes.ok) setAdminVoters(await vtRes.json());
+      if (cmRes.ok) setCouncilMembers(await cmRes.json());
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const enhancedVolunteerSearch = async () => {
+    const params = new URLSearchParams(advVolSearch);
+    try {
+      const res = await fetch(`/api/admin/search-volunteers?${params}`);
+      if (res.ok) setVolunteers(await res.json());
+    } catch (err) { console.error(err); }
+  };
+
+  const enhancedComplaintSearch = async () => {
+    const params = new URLSearchParams(advCompSearch);
+    try {
+      const res = await fetch(`/api/admin/search-complaints?${params}`);
+      if (res.ok) setAdminComplaints(await res.json());
+    } catch (err) { console.error(err); }
+  };
+
+  const addCouncilMember = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!adminUser || adminUser.role !== 'SuperAdmin') return;
+    try {
+      const res = await fetch('/api/admin/council-members', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newCouncilMember)
+      });
+      if (res.ok) {
+        setNewCouncilMember({ name_en: '', name_bn: '', position_en: '', position_bn: '', phone: '', email: '', photo: '' });
+        fetchAdminData();
+        showToast(lang === 'bn' ? 'সদস্য যোগ করা হয়েছে' : 'Member added successfully');
+      }
+    } catch (err) { console.error(err); }
+  };
+
+  const deleteCouncilMember = async (id: number) => {
+    if (!adminUser || adminUser.role !== 'SuperAdmin') return;
+    try {
+      const res = await fetch(`/api/admin/council-members/${id}`, { method: 'DELETE' });
+      if (res.ok) {
+        setDeleteConfirm(null);
+        fetchAdminData();
+        showToast(lang === 'bn' ? 'সদস্য মুছে ফেলা হয়েছে' : 'Member deleted successfully');
+      }
+    } catch (err) { console.error(err); }
+  };
+
+  const addVoter = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!adminUser || adminUser.role === 'Viewer') return;
+    await fetch('/api/admin/voters', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(newVoter)
+    });
+    setNewVoter({ nid: '', dob: '', name_en: '', name_bn: '', father_name: '', mother_name: '', address: '', serial_no: '', polling_center_en: '', polling_center_bn: '', booth_no: '', photo: '' });
+    fetchAdminData();
+    showToast(lang === 'bn' ? 'ভোটার যোগ করা হয়েছে' : 'Voter added successfully');
+  };
+
+  const deleteVoter = async (id: number) => {
+    if (!adminUser || adminUser.role !== 'SuperAdmin') return;
+    await fetch(`/api/admin/voters/${id}`, { method: 'DELETE' });
+    setDeleteConfirm(null);
+    fetchAdminData();
+    showToast(lang === 'bn' ? 'ভোটার মুছে ফেলা হয়েছে' : 'Voter deleted successfully');
+  };
+
+  const updateVoter = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!adminUser || adminUser.role === 'Viewer' || !editingVoter) return;
+    try {
+      const res = await fetch(`/api/admin/voters/${editingVoter.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(editingVoter)
+      });
+      if (res.ok) {
+        setEditingVoter(null);
+        fetchAdminData();
+        showToast(lang === 'bn' ? 'ভোটার তথ্য আপডেট করা হয়েছে' : 'Voter information updated');
+      }
     } catch (err) {
       console.error(err);
     }
@@ -857,6 +1149,25 @@ export default function App() {
       }
     } catch (err) {
       console.error(err);
+    }
+  };
+
+  const updateCouncilorProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!adminUser || adminUser.role !== 'SuperAdmin' || !editCouncilor) return;
+    try {
+      const res = await fetch('/api/admin/councilor', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(editCouncilor)
+      });
+      if (res.ok) {
+        fetchCouncilorProfile();
+        showToast(lang === 'bn' ? 'কাউন্সিলর প্রোফাইল আপডেট করা হয়েছে' : 'Councilor profile updated successfully');
+      }
+    } catch (err) {
+      console.error(err);
+      showToast(lang === 'bn' ? 'আপডেট ব্যর্থ হয়েছে' : 'Update failed', 'error');
     }
   };
 
@@ -1049,11 +1360,15 @@ export default function App() {
                 </div>
               </section>
 
+              <CouncilorProfileSection />
+
               {/* Section links moved to standalone view or integrated */}
               {news.length > 0 && <NewsSection />}
               {gallery.length > 0 && <GallerySection />}
             </motion.div>
           )}
+
+          {activeTab === 'councilor' && <CouncilorProfileSection />}
 
           {activeTab === 'news' && (
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-8">
@@ -1070,6 +1385,63 @@ export default function App() {
           {activeTab === 'gallery' && (
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-8">
                <GallerySection />
+            </motion.div>
+          )}
+
+          {activeTab === 'councilMembers' && (
+            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-12">
+              <section className="text-center max-w-3xl mx-auto space-y-4">
+                <div className="w-20 h-20 bg-emerald-100 text-emerald-600 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-lg shadow-emerald-600/10">
+                  <Users size={40} />
+                </div>
+                <h2 className={`text-4xl font-black ${darkMode ? 'text-white' : 'text-slate-900'} tracking-tight`}>
+                  {lang === 'bn' ? 'ওয়ার্ড ২৯ কাউন্সিল পরিষদ' : 'Ward 29 Council Members'}
+                </h2>
+                <p className={`text-lg font-medium leading-relaxed ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>
+                  {lang === 'bn' 
+                    ? 'আমাদের ওয়ার্ডের উন্নয়নে এবং জনগণের সেবায় নিয়োজিত পরিষদ সদস্যদের তালিকা।' 
+                    : 'List of council members dedicated to the development of our ward and serving the community.'}
+                </p>
+              </section>
+
+              <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-8">
+                {councilMembers.map((member) => (
+                  <div key={member.id} className={`card overflow-hidden group border-2 transition-all hover:border-emerald-500 hover:shadow-2xl ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-100 shadow-sm'}`}>
+                    <div className="aspect-[3/4] bg-slate-100 relative overflow-hidden">
+                      {member.photo ? (
+                        <img src={member.photo} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center text-slate-300">
+                          <User size={80} />
+                        </div>
+                      )}
+                      <div className="absolute inset-0 bg-gradient-to-t from-emerald-950/90 via-transparent to-transparent opacity-60 group-hover:opacity-80 transition-opacity"></div>
+                      <div className="absolute bottom-0 left-0 right-0 p-6">
+                        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-400 mb-1">
+                          {lang === 'bn' ? member.position_bn : member.position_en}
+                        </p>
+                        <h4 className="text-xl font-black text-white leading-tight">
+                          {lang === 'bn' ? member.name_bn : member.name_en}
+                        </h4>
+                      </div>
+                    </div>
+                    <div className="p-6 space-y-3">
+                      <div className="flex items-center gap-3 text-sm font-bold text-slate-500 dark:text-slate-400">
+                        <div className="w-8 h-8 rounded-lg bg-slate-50 dark:bg-slate-700 flex items-center justify-center group-hover:text-emerald-500 transition-colors">
+                          <Phone size={14} />
+                        </div>
+                        {member.phone}
+                      </div>
+                      <div className="flex items-center gap-3 text-sm font-bold text-slate-500 dark:text-slate-400">
+                        <div className="w-8 h-8 rounded-lg bg-slate-50 dark:bg-slate-700 flex items-center justify-center group-hover:text-emerald-500 transition-colors">
+                          <Mail size={14} />
+                        </div>
+                        {member.email}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </motion.div>
           )}
 
@@ -1214,8 +1586,8 @@ export default function App() {
                       </h4>
                       <p className="text-sm text-emerald-700 font-medium leading-relaxed">
                         {lang === 'bn' 
-                          ? `ভোটগ্রহণ অনুষ্ঠিত হবে ১ ডিসেম্বর, ২০২৪ তারিখে। অনুগ্রহ করে এই স্লিপ এবং আপনার মূল এনআইডি কার্ড সাথে আনুন। ভোটকেন্দ্র সকাল ৮টা থেকে বিকাল ৪টা পর্যন্ত খোলা থাকবে।`
-                          : `Polling will take place on December 1st, 2024. Please bring this slip and your original NID card. The polling station will be open from 8 AM to 4 PM.`
+                          ? `ভোটগ্রহণ অনুষ্ঠিত হবে ১ ডিসেম্বর, ২০২৬ তারিখে। অনুগ্রহ করে এই স্লিপ এবং আপনার মূল এনআইডি কার্ড সাথে আনুন। ভোটকেন্দ্র সকাল ৮টা থেকে বিকাল ৪টা পর্যন্ত খোলা থাকবে।`
+                          : `Polling will take place on December 1st, 2026. Please bring this slip and your original NID card. The polling station will be open from 8 AM to 4 PM.`
                         }
                       </p>
                     </div>
@@ -1294,8 +1666,8 @@ export default function App() {
                                         </h4>
                                         <p class="text-[10px] text-emerald-700 font-medium leading-relaxed">
                                           ${lang === 'bn' 
-                                            ? `ভোটগ্রহণ অনুষ্ঠিত হবে ১ ডিসেম্বর, ২০২৪ তারিখে। অনুগ্রহ করে এই স্লিপ এবং আপনার মূল এনআইডি কার্ড সাথে আনুন। ভোটকেন্দ্র সকাল ৮টা থেকে বিকাল ৪টা পর্যন্ত খোলা থাকবে।`
-                                            : `Polling will take place on December 1st, 2024. Please bring this slip and your original NID card. The polling station will be open from 8 AM to 4 PM.`
+                                            ? `ভোটগ্রহণ অনুষ্ঠিত হবে ১ ডিসেম্বর, ২০২৬ তারিখে। অনুগ্রহ করে এই স্লিপ এবং আপনার মূল এনআইডি কার্ড সাথে আনুন। ভোটকেন্দ্র সকাল ৮টা থেকে বিকাল ৪টা পর্যন্ত খোলা থাকবে।`
+                                            : `Polling will take place on December 1st, 2026. Please bring this slip and your original NID card. The polling station will be open from 8 AM to 4 PM.`
                                           }
                                         </p>
                                       </div>
@@ -1653,7 +2025,12 @@ export default function App() {
                           { id: 'news', icon: Newspaper, label: t.nav.news },
                           { id: 'events', icon: Clock, label: t.nav.events },
                           { id: 'gallery', icon: ImageIcon, label: t.nav.gallery },
-                          ...(adminUser.role === 'SuperAdmin' ? [{ id: 'users', icon: ShieldCheck, label: t.admin.users }] : [])
+                          ...(adminUser.role === 'SuperAdmin' ? [
+                            { id: 'councilor', icon: ShieldCheck, label: t.admin.councilor },
+                            { id: 'council-members', icon: Users, label: t.admin.councilMembers },
+                            { id: 'voters', icon: UserCheck, label: t.admin.voters },
+                            { id: 'users', icon: ShieldCheck, label: t.admin.users }
+                          ] : [])
                         ].map(tab => (
                           <button
                             key={tab.id}
@@ -1692,7 +2069,58 @@ export default function App() {
                     </div>
 
                     {adminSubTab === 'volunteers' && (
-                    <div className="card overflow-hidden">
+                    <div className="space-y-4">
+                      {/* Advanced Search Header */}
+                      <div className="card p-6 bg-slate-50 border border-slate-100">
+                        <div className="flex items-center gap-2 mb-4">
+                          <Search size={18} className="text-emerald-600" />
+                          <h4 className="text-xs font-black uppercase tracking-widest text-slate-500">{t.search.advanced}</h4>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                          <input 
+                            type="text" 
+                            placeholder={t.search.name}
+                            value={advVolSearch.query}
+                            onChange={e => setAdvVolSearch({...advVolSearch, query: e.target.value})}
+                            className="bg-white border border-slate-200 rounded-xl px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-emerald-500"
+                          />
+                          <input 
+                            type="text" 
+                            placeholder={t.search.phone}
+                            value={advVolSearch.phone}
+                            onChange={e => setAdvVolSearch({...advVolSearch, phone: e.target.value})}
+                            className="bg-white border border-slate-200 rounded-xl px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-emerald-500"
+                          />
+                          <input 
+                            type="date" 
+                            value={advVolSearch.from}
+                            onChange={e => setAdvVolSearch({...advVolSearch, from: e.target.value})}
+                            className="bg-white border border-slate-200 rounded-xl px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-emerald-500"
+                          />
+                          <input 
+                            type="date" 
+                            value={advVolSearch.to}
+                            onChange={e => setAdvVolSearch({...advVolSearch, to: e.target.value})}
+                            className="bg-white border border-slate-200 rounded-xl px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-emerald-500"
+                          />
+                        </div>
+                        <div className="flex gap-2 mt-4">
+                          <button onClick={enhancedVolunteerSearch} className="btn-primary py-2 px-6 flex items-center gap-2 text-xs">
+                            <Search size={14} /> {t.search.find}
+                          </button>
+                          <button 
+                            onClick={() => {
+                              setAdvVolSearch({ query: '', phone: '', from: '', to: '' });
+                              fetchAdminData();
+                            }} 
+                            className="bg-slate-200 text-slate-600 font-bold py-2 px-6 rounded-xl hover:bg-slate-300 transition-colors text-xs"
+                          >
+                            {t.search.clear}
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="card overflow-hidden">
                       <div className="p-4 bg-slate-50 border-b border-slate-100 flex flex-col md:flex-row gap-4">
                         <div className="flex-grow flex items-center bg-white border border-slate-200 rounded-xl px-4 py-2 ring-1 ring-slate-100 focus-within:ring-2 focus-within:ring-emerald-500">
                           <Search size={18} className="text-slate-400 mr-2" />
@@ -1864,11 +2292,73 @@ export default function App() {
                         </table>
                       </div>
                     </div>
-                  )}
+                  </div>
+                )}
 
-                  {adminSubTab === 'complaints' && (
-                    <div className="space-y-4">
-                      {adminComplaints.map(c => (
+                {adminSubTab === 'complaints' && (
+                  <div className="space-y-4">
+                      {/* Advanced Search Header */}
+                      <div className="card p-6 bg-slate-50 border border-slate-100">
+                        <div className="flex items-center gap-2 mb-4">
+                          <Search size={18} className="text-emerald-600" />
+                          <h4 className="text-xs font-black uppercase tracking-widest text-slate-500">{t.search.advanced}</h4>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+                          <input 
+                            type="text" 
+                            placeholder={lang === 'bn' ? 'বিষয় বা বিবরণ...' : 'Subject or Desc...'}
+                            value={advCompSearch.query}
+                            onChange={e => setAdvCompSearch({...advCompSearch, query: e.target.value})}
+                            className="bg-white border border-slate-200 rounded-xl px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-emerald-500"
+                          />
+                          <input 
+                            type="text" 
+                            placeholder={t.search.phone}
+                            value={advCompSearch.phone}
+                            onChange={e => setAdvCompSearch({...advCompSearch, phone: e.target.value})}
+                            className="bg-white border border-slate-200 rounded-xl px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-emerald-500"
+                          />
+                          <select
+                            value={advCompSearch.status}
+                            onChange={e => setAdvCompSearch({...advCompSearch, status: e.target.value})}
+                            className="bg-white border border-slate-200 rounded-xl px-4 py-2 text-sm outline-none"
+                          >
+                            <option value="">All Status</option>
+                            <option value="Open">Open</option>
+                            <option value="In Progress">In Progress</option>
+                            <option value="Resolved">Resolved</option>
+                          </select>
+                          <input 
+                            type="date" 
+                            value={advCompSearch.from}
+                            onChange={e => setAdvCompSearch({...advCompSearch, from: e.target.value})}
+                            className="bg-white border border-slate-200 rounded-xl px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-emerald-500"
+                          />
+                          <input 
+                            type="date" 
+                            value={advCompSearch.to}
+                            onChange={e => setAdvCompSearch({...advCompSearch, to: e.target.value})}
+                            className="bg-white border border-slate-200 rounded-xl px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-emerald-500"
+                          />
+                        </div>
+                        <div className="flex gap-2 mt-4">
+                          <button onClick={enhancedComplaintSearch} className="btn-primary py-2 px-6 flex items-center gap-2 text-xs">
+                            <Search size={14} /> {t.search.find}
+                          </button>
+                          <button 
+                            onClick={() => {
+                              setAdvCompSearch({ query: '', phone: '', from: '', to: '', status: '' });
+                              fetchAdminData();
+                            }} 
+                            className="bg-slate-200 text-slate-600 font-bold py-2 px-6 rounded-xl hover:bg-slate-300 transition-colors text-xs"
+                          >
+                            {t.search.clear}
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="space-y-4">
+                        {adminComplaints.map(c => (
                         <div key={c.id} className="card p-6 space-y-4">
                           <div className="flex justify-between items-start">
                             <div>
@@ -1932,7 +2422,8 @@ export default function App() {
                         </div>
                       ))}
                     </div>
-                  )}
+                  </div>
+                )}
 
                    {adminSubTab === 'news' && (
                     <div className="grid lg:grid-cols-3 gap-8">
@@ -2089,6 +2580,266 @@ export default function App() {
                     </div>
                   )}
 
+                  {adminSubTab === 'councilor' && editCouncilor && (
+                    <div className="card p-8 space-y-8 animate-in fade-in slide-in-from-bottom-4 text-slate-800">
+                      <div className="flex items-center justify-between">
+                        <h2 className="text-xl font-black text-slate-800 uppercase tracking-tight">Councilor Profile Management</h2>
+                        <div className="px-4 py-1.5 bg-emerald-50 text-emerald-600 rounded-full text-[10px] font-black uppercase tracking-widest border border-emerald-100">
+                          SuperAdmin Only
+                        </div>
+                      </div>
+
+                      <form onSubmit={updateCouncilorProfile} className="space-y-8">
+                        {/* Photo Section */}
+                        <div className="flex flex-col md:flex-row gap-8 items-center md:items-start pb-8 border-b border-slate-100">
+                          <div className="relative group">
+                            <div className="w-40 h-40 bg-slate-100 rounded-2xl overflow-hidden border-2 border-emerald-500 shadow-xl">
+                              {editCouncilor.photo ? (
+                                <img src={editCouncilor.photo} className="w-full h-full object-cover" />
+                              ) : (
+                                <div className="w-full h-full flex items-center justify-center text-slate-300">
+                                  <ShieldCheck size={48} />
+                                </div>
+                              )}
+                            </div>
+                            <label className="absolute -bottom-2 -right-2 bg-emerald-600 text-white p-3 rounded-xl shadow-lg cursor-pointer hover:bg-emerald-700 transition-colors">
+                              <Plus size={20} />
+                              <input type="file" accept="image/*" onChange={e => handlePhotoUpload(e, (val) => setEditCouncilor({...editCouncilor, photo: val}))} className="hidden" />
+                            </label>
+                          </div>
+                          <div className="flex-grow space-y-4">
+                            <p className="text-xs font-black text-slate-400 uppercase tracking-widest">General Information</p>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                              <div className="space-y-1">
+                                <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Name (English)</label>
+                                <input type="text" required value={editCouncilor.name_en} onChange={e => setEditCouncilor({...editCouncilor, name_en: e.target.value})} className="w-full px-4 py-3 rounded-xl border border-slate-200 text-sm font-bold focus:ring-2 focus:ring-emerald-500 outline-none" />
+                              </div>
+                              <div className="space-y-1">
+                                <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Name (Bengali)</label>
+                                <input type="text" required value={editCouncilor.name_bn} onChange={e => setEditCouncilor({...editCouncilor, name_bn: e.target.value})} className="w-full px-4 py-3 rounded-xl border border-slate-200 text-sm font-bold focus:ring-2 focus:ring-emerald-500 outline-none" />
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Content Sections */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                          <div className="space-y-4">
+                            <p className="text-xs font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                              <Clock size={14} className="text-emerald-500" /> Political Career
+                            </p>
+                            <textarea rows={6} required value={editCouncilor.career_en} onChange={e => setEditCouncilor({...editCouncilor, career_en: e.target.value})} placeholder="English description..." className="w-full px-4 py-3 rounded-xl border border-slate-200 text-sm font-medium focus:ring-2 focus:ring-emerald-500 outline-none resize-none"></textarea>
+                            <textarea rows={6} required value={editCouncilor.career_bn} onChange={e => setEditCouncilor({...editCouncilor, career_bn: e.target.value})} placeholder="Bengali description..." className="w-full px-4 py-3 rounded-xl border border-slate-200 text-sm font-medium focus:ring-2 focus:ring-emerald-500 outline-none resize-none"></textarea>
+                          </div>
+                          
+                          <div className="space-y-4">
+                            <p className="text-xs font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                              <Sparkles size={14} className="text-emerald-500" /> Social Service
+                            </p>
+                            <textarea rows={6} required value={editCouncilor.social_service_en} onChange={e => setEditCouncilor({...editCouncilor, social_service_en: e.target.value})} placeholder="English description..." className="w-full px-4 py-3 rounded-xl border border-slate-200 text-sm font-medium focus:ring-2 focus:ring-emerald-500 outline-none resize-none"></textarea>
+                            <textarea rows={6} required value={editCouncilor.social_service_bn} onChange={e => setEditCouncilor({...editCouncilor, social_service_bn: e.target.value})} placeholder="Bengali description..." className="w-full px-4 py-3 rounded-xl border border-slate-200 text-sm font-medium focus:ring-2 focus:ring-emerald-500 outline-none resize-none"></textarea>
+                          </div>
+
+                          <div className="md:col-span-2 space-y-4">
+                            <p className="text-xs font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                              <FileText size={14} className="text-emerald-500" /> Education
+                            </p>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                              <input type="text" required value={editCouncilor.education_en} onChange={e => setEditCouncilor({...editCouncilor, education_en: e.target.value})} placeholder="Education (English)" className="w-full px-4 py-3 rounded-xl border border-slate-200 text-sm font-bold focus:ring-2 focus:ring-emerald-500 outline-none" />
+                              <input type="text" required value={editCouncilor.education_bn} onChange={e => setEditCouncilor({...editCouncilor, education_bn: e.target.value})} placeholder="Education (Bengali)" className="w-full px-4 py-3 rounded-xl border border-slate-200 text-sm font-bold focus:ring-2 focus:ring-emerald-500 outline-none" />
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="pt-4">
+                          <button type="submit" className="w-full btn-primary py-4 text-lg flex items-center justify-center gap-3">
+                            <CheckCircle2 size={24} /> Save Councilor Profile Changes
+                          </button>
+                        </div>
+                      </form>
+                    </div>
+                  )}
+
+                  {adminSubTab === 'voters' && (
+                    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4">
+                      <div className="flex justify-between items-center">
+                        <h2 className="text-xl font-black text-slate-800 uppercase tracking-tight font-serif flex items-center gap-3">
+                          <UserCheck className="text-emerald-600" /> Voter Database Management
+                        </h2>
+                      </div>
+
+                      <div className="grid lg:grid-cols-3 gap-8">
+                        <div className="lg:col-span-1">
+                          <form onSubmit={editingVoter ? updateVoter : addVoter} className="card p-6 space-y-4 sticky top-24">
+                            <h3 className="font-bold flex items-center justify-between gap-2">
+                              <div className="flex items-center gap-2">
+                                <Plus size={18} /> {editingVoter ? 'Edit Voter' : 'Add New Voter'}
+                              </div>
+                              {editingVoter && (
+                                <button type="button" onClick={() => setEditingVoter(null)} className="text-xs text-red-500 hover:underline">Cancel</button>
+                              )}
+                            </h3>
+                            <div className="space-y-4">
+                              <input type="text" placeholder="NID Number" required value={editingVoter ? editingVoter.nid : newVoter.nid} onChange={e => editingVoter ? setEditingVoter({...editingVoter, nid: e.target.value}) : setNewVoter({...newVoter, nid: e.target.value})} className="w-full px-4 py-2 rounded-lg border border-slate-200 text-sm font-mono" />
+                              <input type="date" required value={editingVoter ? editingVoter.dob : newVoter.dob} onChange={e => editingVoter ? setEditingVoter({...editingVoter, dob: e.target.value}) : setNewVoter({...newVoter, dob: e.target.value})} className="w-full px-4 py-2 rounded-lg border border-slate-200 text-sm" />
+                              <input type="text" placeholder="Name (English)" required value={editingVoter ? editingVoter.name_en : newVoter.name_en} onChange={e => editingVoter ? setEditingVoter({...editingVoter, name_en: e.target.value}) : setNewVoter({...newVoter, name_en: e.target.value})} className="w-full px-4 py-2 rounded-lg border border-slate-200 text-sm" />
+                              <input type="text" placeholder="Name (Bengali)" required value={editingVoter ? editingVoter.name_bn : newVoter.name_bn} onChange={e => editingVoter ? setEditingVoter({...editingVoter, name_bn: e.target.value}) : setNewVoter({...newVoter, name_bn: e.target.value})} className="w-full px-4 py-2 rounded-lg border border-slate-200 text-sm" />
+                              <input type="text" placeholder="Father's Name" value={editingVoter ? editingVoter.father_name : newVoter.father_name} onChange={e => editingVoter ? setEditingVoter({...editingVoter, father_name: e.target.value}) : setNewVoter({...newVoter, father_name: e.target.value})} className="w-full px-4 py-2 rounded-lg border border-slate-200 text-sm" />
+                              <input type="text" placeholder="Mother's Name" value={editingVoter ? editingVoter.mother_name : newVoter.mother_name} onChange={e => editingVoter ? setEditingVoter({...editingVoter, mother_name: e.target.value}) : setNewVoter({...newVoter, mother_name: e.target.value})} className="w-full px-4 py-2 rounded-lg border border-slate-200 text-sm" />
+                              <input type="text" placeholder="Polling Center (EN)" value={editingVoter ? editingVoter.polling_center_en : newVoter.polling_center_en} onChange={e => editingVoter ? setEditingVoter({...editingVoter, polling_center_en: e.target.value}) : setNewVoter({...newVoter, polling_center_en: e.target.value})} className="w-full px-4 py-2 rounded-lg border border-slate-200 text-sm" />
+                              <input type="text" placeholder="Polling Center (BN)" value={editingVoter ? editingVoter.polling_center_bn : newVoter.polling_center_bn} onChange={e => editingVoter ? setEditingVoter({...editingVoter, polling_center_bn: e.target.value}) : setNewVoter({...newVoter, polling_center_bn: e.target.value})} className="w-full px-4 py-2 rounded-lg border border-slate-200 text-sm" />
+                              <div className="grid grid-cols-2 gap-4">
+                                <input type="text" placeholder="Serial No" value={editingVoter ? editingVoter.serial_no : newVoter.serial_no} onChange={e => editingVoter ? setEditingVoter({...editingVoter, serial_no: e.target.value}) : setNewVoter({...newVoter, serial_no: e.target.value})} className="w-full px-4 py-2 rounded-lg border border-slate-200 text-sm font-mono" />
+                                <input type="text" placeholder="Booth No" value={editingVoter ? editingVoter.booth_no : newVoter.booth_no} onChange={e => editingVoter ? setEditingVoter({...editingVoter, booth_no: e.target.value}) : setNewVoter({...newVoter, booth_no: e.target.value})} className="w-full px-4 py-2 rounded-lg border border-slate-200 text-sm font-mono" />
+                              </div>
+                              <textarea placeholder="Address" rows={2} value={editingVoter ? editingVoter.address : newVoter.address} onChange={e => editingVoter ? setEditingVoter({...editingVoter, address: e.target.value}) : setNewVoter({...newVoter, address: e.target.value})} className="w-full px-4 py-2 rounded-lg border border-slate-200 text-sm resize-none"></textarea>
+                              <div className="space-y-2">
+                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block ml-1">Voter Photo URL</label>
+                                <input type="text" placeholder="https://..." value={editingVoter ? editingVoter.photo : newVoter.photo} onChange={e => editingVoter ? setEditingVoter({...editingVoter, photo: e.target.value}) : setNewVoter({...newVoter, photo: e.target.value})} className="w-full px-4 py-2 rounded-lg border border-slate-200 text-sm" />
+                              </div>
+                            </div>
+                            <button type="submit" className="w-full btn-primary py-3 flex items-center justify-center gap-2">
+                              {editingVoter ? <Search size={18} /> : <Plus size={18} />}
+                              {editingVoter ? 'Update Voter' : 'Add Voter'}
+                            </button>
+                          </form>
+                        </div>
+
+                        <div className="lg:col-span-2 space-y-4">
+                          <div className="card overflow-hidden">
+                            <table className="w-full text-left">
+                              <thead className="bg-slate-50 border-b border-slate-100">
+                                <tr>
+                                  <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Voter</th>
+                                  <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">NID / DOB</th>
+                                  <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Actions</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-slate-100">
+                                {adminVoters.length === 0 ? (
+                                  <tr>
+                                    <td colSpan={3} className="px-6 py-12 text-center text-slate-400 font-medium">No voters registered in Ward 29 dataset.</td>
+                                  </tr>
+                                ) : (
+                                  adminVoters.map((v) => (
+                                    <tr key={v.id} className="hover:bg-slate-50 transition-colors group">
+                                      <td className="px-6 py-4">
+                                        <div className="flex items-center gap-3">
+                                          <div className="w-10 h-10 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center overflow-hidden">
+                                            {v.photo ? (
+                                              <img src={v.photo} className="w-full h-full object-cover" />
+                                            ) : (
+                                              <User size={20} />
+                                            )}
+                                          </div>
+                                          <div>
+                                            <p className="text-sm font-bold text-slate-800">{v.name_en}</p>
+                                            <p className="text-[10px] font-bold text-emerald-600 uppercase tracking-tight">{v.name_bn}</p>
+                                          </div>
+                                        </div>
+                                      </td>
+                                      <td className="px-6 py-4">
+                                        <p className="text-xs font-mono font-bold text-slate-600">{v.nid}</p>
+                                        <p className="text-[10px] font-bold text-slate-400">{v.dob}</p>
+                                      </td>
+                                      <td className="px-6 py-4 text-right">
+                                        <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                          <button onClick={() => setEditingVoter(v)} className="p-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100">
+                                            <Edit3 size={16} />
+                                          </button>
+                                          <button onClick={() => setDeleteConfirm({ id: v.id, type: 'voter' })} className="p-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-100">
+                                            <Trash2 size={16} />
+                                          </button>
+                                        </div>
+                                      </td>
+                                    </tr>
+                                  ))
+                                )}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {adminSubTab === 'council-members' && (
+                    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4">
+                      <div className="flex justify-between items-center">
+                        <h2 className="text-xl font-black text-slate-800 uppercase tracking-tight font-serif flex items-center gap-3">
+                          <Users className="text-emerald-600" /> {t.admin.councilMembers}
+                        </h2>
+                      </div>
+
+                      <div className="grid lg:grid-cols-3 gap-8">
+                        <div className="lg:col-span-1">
+                          <form onSubmit={addCouncilMember} className="card p-6 space-y-4 sticky top-24">
+                            <h3 className="font-bold flex items-center gap-2">
+                              <Plus size={18} /> Add Member
+                            </h3>
+                            <div className="space-y-4">
+                              <input type="text" placeholder="Name (EN)" required value={newCouncilMember.name_en} onChange={e => setNewCouncilMember({...newCouncilMember, name_en: e.target.value})} className="w-full px-4 py-2 rounded-lg border border-slate-200 text-sm" />
+                              <input type="text" placeholder="Name (BN)" required value={newCouncilMember.name_bn} onChange={e => setNewCouncilMember({...newCouncilMember, name_bn: e.target.value})} className="w-full px-4 py-2 rounded-lg border border-slate-200 text-sm" />
+                              <input type="text" placeholder="Position (EN)" required value={newCouncilMember.position_en} onChange={e => setNewCouncilMember({...newCouncilMember, position_en: e.target.value})} className="w-full px-4 py-2 rounded-lg border border-slate-200 text-sm" />
+                              <input type="text" placeholder="Position (BN)" required value={newCouncilMember.position_bn} onChange={e => setNewCouncilMember({...newCouncilMember, position_bn: e.target.value})} className="w-full px-4 py-2 rounded-lg border border-slate-200 text-sm" />
+                              <input type="text" placeholder="Phone" value={newCouncilMember.phone} onChange={e => setNewCouncilMember({...newCouncilMember, phone: e.target.value})} className="w-full px-4 py-2 rounded-lg border border-slate-200 text-sm" />
+                              <input type="email" placeholder="Email" value={newCouncilMember.email} onChange={e => setNewCouncilMember({...newCouncilMember, email: e.target.value})} className="w-full px-4 py-2 rounded-lg border border-slate-200 text-sm" />
+                              <div className="space-y-2">
+                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block ml-1">Photo</label>
+                                <input type="file" accept="image/*" onChange={e => handlePhotoUpload(e, (val) => setNewCouncilMember({...newCouncilMember, photo: val}))} className="text-xs" />
+                              </div>
+                            </div>
+                            <button type="submit" className="w-full btn-primary py-3 flex items-center justify-center gap-2">
+                              <Plus size={18} /> Add Member
+                            </button>
+                          </form>
+                        </div>
+
+                        <div className="lg:col-span-2 grid md:grid-cols-2 gap-4">
+                          {councilMembers.length === 0 ? (
+                            <div className="col-span-full card p-12 text-center text-slate-400 font-medium bg-slate-50/50 border-dashed border-2">
+                              No council members listed yet.
+                            </div>
+                          ) : (
+                            councilMembers.map((member) => (
+                              <div key={member.id} className="card p-4 flex gap-4 hover:shadow-lg transition-all group">
+                                <div className="w-16 h-16 rounded-xl bg-slate-100 flex-shrink-0 overflow-hidden">
+                                  {member.photo ? (
+                                    <img src={member.photo} className="w-full h-full object-cover" />
+                                  ) : (
+                                    <div className="w-full h-full flex items-center justify-center text-slate-300">
+                                      <User size={32} />
+                                    </div>
+                                  )}
+                                </div>
+                                <div className="flex-grow">
+                                  <h4 className="font-bold text-slate-800 leading-tight">{lang === 'bn' ? member.name_bn : member.name_en}</h4>
+                                  <p className="text-xs font-bold text-emerald-600 mt-0.5">{lang === 'bn' ? member.position_bn : member.position_en}</p>
+                                  <div className="mt-2 space-y-1">
+                                    <p className="text-[10px] flex items-center gap-1.5 text-slate-500 font-medium">
+                                      <Phone size={10} /> {member.phone}
+                                    </p>
+                                    <p className="text-[10px] flex items-center gap-1.5 text-slate-500 font-medium">
+                                      <Mail size={10} /> {member.email}
+                                    </p>
+                                  </div>
+                                </div>
+                                {adminUser?.role === 'SuperAdmin' && (
+                                  <button 
+                                    onClick={() => setDeleteConfirm({ id: member.id, type: 'council-member' })}
+                                    className="opacity-0 group-hover:opacity-100 p-2 text-red-500 hover:bg-red-50 rounded-lg transition-all self-start"
+                                  >
+                                    <Trash2 size={16} />
+                                  </button>
+                                )}
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
                   {adminSubTab === 'users' && (
                     <div className="grid lg:grid-cols-3 gap-8">
                       <div className="lg:col-span-1">
@@ -2197,6 +2948,8 @@ export default function App() {
                     if (deleteConfirm.type === 'gallery') deleteGallery(deleteConfirm.id);
                     if (deleteConfirm.type === 'event') deleteEvent(deleteConfirm.id);
                     if (deleteConfirm.type === 'user') deleteAdminUser(deleteConfirm.id);
+                    if (deleteConfirm.type === 'voter') deleteVoter(deleteConfirm.id);
+                    if (deleteConfirm.type === 'council-member') deleteCouncilMember(deleteConfirm.id);
                   }}
                   className="flex-1 px-4 py-2 rounded-xl bg-red-600 text-white font-bold hover:bg-red-700 transition-colors"
                 >
@@ -2350,6 +3103,94 @@ export default function App() {
         )}
       </AnimatePresence>
 
+      {/* Citizen Support Chat */}
+      <div className="fixed bottom-6 right-6 z-[100] no-print">
+        <AnimatePresence>
+          {isChatOpen && (
+            <motion.div
+              initial={{ opacity: 0, y: 20, scale: 0.9 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 20, scale: 0.9 }}
+              className={`absolute bottom-20 right-0 w-[350px] md:w-[400px] h-[500px] rounded-3xl shadow-2xl flex flex-col overflow-hidden border-2 border-emerald-500/20 ${darkMode ? 'bg-slate-900' : 'bg-white'}`}
+            >
+              {/* Chat Header */}
+              <div className="bg-emerald-600 p-5 text-white flex justify-between items-center">
+                <div className="flex items-center gap-3">
+                  <div className="bg-white/20 p-2 rounded-xl backdrop-blur-sm">
+                    <Sparkles size={20} />
+                  </div>
+                  <div>
+                    <h4 className="font-black text-sm">Citizen Support AI</h4>
+                    <p className="text-[10px] font-bold opacity-80 uppercase tracking-widest">Powered by Digital Union</p>
+                  </div>
+                </div>
+                <button onClick={() => setIsChatOpen(false)} className="hover:bg-white/20 p-2 rounded-xl transition-colors">
+                  <X size={20} />
+                </button>
+              </div>
+
+              {/* Messages Area */}
+              <div className="flex-1 overflow-y-auto p-5 space-y-4">
+                {chatMessages.map((msg, i) => (
+                  <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                    <div className={`max-w-[80%] p-4 rounded-2xl text-sm font-medium leading-relaxed ${
+                      msg.role === 'user' 
+                        ? 'bg-emerald-600 text-white' 
+                        : (darkMode ? 'bg-slate-800 text-slate-300' : 'bg-slate-100 text-slate-900')
+                    }`}>
+                      {msg.content}
+                    </div>
+                  </div>
+                ))}
+                {isAiTyping && (
+                   <div className="flex justify-start">
+                    <div className={`p-4 rounded-2xl flex gap-1 ${darkMode ? 'bg-slate-800' : 'bg-slate-100'}`}>
+                      <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-bounce"></div>
+                      <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-bounce sm:delay-150"></div>
+                      <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-bounce sm:delay-300"></div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Input Area */}
+              <form onSubmit={handleSendMessage} className={`p-4 border-t ${darkMode ? 'border-slate-800' : 'border-slate-100'}`}>
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={chatInput}
+                    onChange={e => setChatInput(e.target.value)}
+                    placeholder={lang === 'bn' ? 'আপনার প্রশ্ন লিখুন...' : 'Type your question...'}
+                    className={`w-full pl-5 pr-12 py-4 rounded-2xl border-2 transition-all font-bold text-sm outline-none ${
+                       darkMode 
+                        ? 'bg-slate-800 border-slate-700 text-white focus:border-emerald-500' 
+                        : 'bg-white border-slate-100 focus:border-emerald-500'
+                    }`}
+                  />
+                  <button 
+                    type="submit"
+                    disabled={isAiTyping || !chatInput.trim()}
+                    className="absolute right-2 top-2 bottom-2 w-10 bg-emerald-600 text-white rounded-xl flex items-center justify-center hover:bg-emerald-700 transition-colors disabled:opacity-50"
+                  >
+                    <Send size={18} />
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        <motion.button
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
+          onClick={() => setIsChatOpen(!isChatOpen)}
+          className="bg-emerald-600 text-white p-4 rounded-2xl shadow-2xl flex items-center gap-3 transition-all font-black uppercase tracking-tighter"
+        >
+          {isChatOpen ? <X size={24} /> : <MessageSquare size={24} />}
+          <span className="hidden md:inline">{lang === 'bn' ? 'নাগরিক সহায়তা' : 'Support Chat'}</span>
+        </motion.button>
+      </div>
+
       <footer className={`${darkMode ? 'bg-slate-900 border-t border-slate-800' : 'bg-slate-900'} text-slate-400 py-12 no-print`}>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center space-y-4">
           <div className="flex justify-center gap-2 items-center mb-4">
@@ -2361,7 +3202,12 @@ export default function App() {
             <button onClick={() => setActiveTab('privacy')} className="hover:text-white transition-colors">{t.nav.privacy}</button>
             <button onClick={() => setActiveTab('terms')} className="hover:text-white transition-colors">{t.nav.terms}</button>
             <button onClick={() => setActiveTab('contact')} className="hover:text-white transition-colors">{t.nav.contact}</button>
+            <button onClick={() => setActiveTab('councilMembers')} className="hover:text-white transition-colors">{t.nav.councilMembers}</button>
             <button onClick={() => setActiveTab('about')} className="hover:text-white transition-colors">{t.nav.about}</button>
+            <button onClick={() => setActiveTab('admin')} className="p-2 -m-2 opacity-20 hover:opacity-100 transition-opacity flex items-center gap-1 group">
+              <ShieldCheck size={14} className="text-emerald-500 group-hover:scale-110 transition-transform" />
+              <span className="text-[10px]">{t.nav.admin}</span>
+            </button>
           </div>
         </div>
       </footer>

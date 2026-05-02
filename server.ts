@@ -20,7 +20,8 @@ db.exec(`
     serial_no TEXT,
     polling_center_en TEXT,
     polling_center_bn TEXT,
-    booth_no TEXT
+    booth_no TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
 
   CREATE TABLE IF NOT EXISTS volunteers (
@@ -83,7 +84,49 @@ db.exec(`
     role TEXT DEFAULT 'admin',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
+
+  CREATE TABLE IF NOT EXISTS councilor (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    name_en TEXT,
+    name_bn TEXT,
+    career_en TEXT,
+    career_bn TEXT,
+    education_en TEXT,
+    education_bn TEXT,
+    social_service_en TEXT,
+    social_service_bn TEXT,
+    photo TEXT,
+    last_updated DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS council_members (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name_en TEXT NOT NULL,
+    name_bn TEXT NOT NULL,
+    position_en TEXT NOT NULL,
+    position_bn TEXT NOT NULL,
+    phone TEXT,
+    email TEXT,
+    photo TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
 `);
+
+// Migration: Add created_at to voters if missing
+try {
+  db.prepare("ALTER TABLE voters ADD COLUMN created_at DATETIME DEFAULT CURRENT_TIMESTAMP").run();
+} catch (e) {
+  // Column likely already exists
+}
+
+// Seed default councilor if empty
+const councilorExists = db.prepare("SELECT COUNT(*) as count FROM councilor").get() as { count: number };
+if (councilorExists.count === 0) {
+  db.prepare(`
+    INSERT INTO councilor (id, name_en, name_bn, career_en, career_bn, education_en, education_bn, social_service_en, social_service_bn) 
+    VALUES (1, 'Md. Councilor Name', 'মো: কাউন্সিলর নাম', 'Detailed political career...', 'বিস্তারিত রাজনৈতিক ক্যারিয়ার...', 'Graduate', 'স্নাতক', 'Active social worker', 'সক্রিয় সমাজকর্মী')
+  `).run();
+}
 
 // Seed some mock data if empty
 const voterCount = db.prepare("SELECT COUNT(*) as count FROM voters").get() as { count: number };
@@ -111,19 +154,22 @@ async function startServer() {
   // API Routes
   app.post("/api/voter/verify", async (req, res) => {
     const { nid, dob } = req.body;
-    const apiKey = process.env.PORICHOI_API_KEY;
+    
+    // 1. Always try local search first
+    const localVoter = db.prepare("SELECT * FROM voters WHERE nid = ? AND dob = ?").get(nid, dob);
+    if (localVoter) {
+      return res.json(localVoter);
+    }
 
+    const apiKey = process.env.PORICHOI_API_KEY;
     if (!apiKey) {
-      // Fallback to local search if API key is missing (for demo/dev)
-      const voter = db.prepare("SELECT * FROM voters WHERE nid = ? AND dob = ?").get(nid, dob);
-      if (voter) {
-        return res.json(voter);
-      }
-      return res.status(400).json({ error: "PORICHOI_API_KEY is not configured and voter not found in local DB." });
+      return res.status(404).json({ 
+        error: "Voter not found in Ward 29 dataset and no verification service configured." 
+      });
     }
 
     try {
-      // Porichoi API Call (v2 Autofill)
+      // 2. Call external API if not found locally
       const response = await fetch("https://api.porichoi.bd.com/api/v2/verifications/autofill", {
         method: "POST",
         headers: {
@@ -133,12 +179,14 @@ async function startServer() {
         body: JSON.stringify({ nid, dob })
       });
 
+      if (!response.ok) {
+        throw new Error(`External service responded with ${response.status}`);
+      }
+
       const data = await response.json();
 
       if (data.status === "success") {
         const person = data.data.person;
-        // Map Porichoi data to our voter schema
-        // Note: Porichoi doesn't provide polling center, so we'll assign a default or look it up
         const voterInfo = {
           nid: person.nid,
           dob: person.dob,
@@ -154,7 +202,7 @@ async function startServer() {
           booth_no: "01"
         };
 
-        // Optionally save to local DB for future searches
+        // Cache for future searches
         try {
           db.prepare(`
             INSERT OR REPLACE INTO voters (nid, dob, name_en, name_bn, father_name, mother_name, address, photo, serial_no, polling_center_en, polling_center_bn, booth_no)
@@ -179,11 +227,13 @@ async function startServer() {
 
         res.json(voterInfo);
       } else {
-        res.status(400).json({ error: data.message || "Verification failed" });
+        res.status(400).json({ error: data.message || "Voter information not found in national database" });
       }
     } catch (error) {
-      console.error("Porichoi API Error:", error);
-      res.status(500).json({ error: "External verification service error" });
+      console.error("Voter Verification Error:", error);
+      res.status(503).json({ 
+        error: "National verification service is currently unavailable. Please try again later or contact Ward 29 office if you are a registered resident." 
+      });
     }
   });
 
@@ -379,6 +429,158 @@ async function startServer() {
       res.json({ success: true });
     } catch (error) {
       res.status(400).json({ error: "Failed to update gallery item" });
+    }
+  });
+
+  // Admin Councilor Profile
+  app.get("/api/councilor", (req, res) => {
+    const councilor = db.prepare("SELECT * FROM councilor WHERE id = 1").get();
+    res.json(councilor);
+  });
+
+  // Council Members Management
+  app.get("/api/admin/council-members", (req, res) => {
+    const members = db.prepare("SELECT * FROM council_members ORDER BY id ASC").all();
+    res.json(members);
+  });
+
+  app.post("/api/admin/council-members", (req, res) => {
+    const { name_en, name_bn, position_en, position_bn, phone, email, photo } = req.body;
+    try {
+      db.prepare(`
+        INSERT INTO council_members (name_en, name_bn, position_en, position_bn, phone, email, photo)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).run(name_en, name_bn, position_en, position_bn, phone, email, photo);
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to add council member" });
+    }
+  });
+
+  app.delete("/api/admin/council-members/:id", (req, res) => {
+    const { id } = req.params;
+    try {
+      db.prepare("DELETE FROM council_members WHERE id = ?").run(id);
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to delete council member" });
+    }
+  });
+
+  // Enhanced Admin Searches
+  app.get("/api/admin/search-volunteers", (req, res) => {
+    const { query, phone, from, to } = req.query;
+    let sql = "SELECT * FROM volunteers WHERE 1=1";
+    const params: any[] = [];
+
+    if (query) {
+      sql += " AND name LIKE ?";
+      params.push(`%${query}%`);
+    }
+    if (phone) {
+      sql += " AND phone LIKE ?";
+      params.push(`%${phone}%`);
+    }
+    if (from) {
+      sql += " AND created_at >= ?";
+      params.push(from);
+    }
+    if (to) {
+      sql += " AND created_at <= ?";
+      params.push(`${to} 23:59:59`);
+    }
+
+    sql += " ORDER BY created_at DESC";
+    const results = db.prepare(sql).all(...params);
+    res.json(results);
+  });
+
+  app.get("/api/admin/search-complaints", (req, res) => {
+    const { query, phone, from, to, status } = req.query;
+    let sql = "SELECT * FROM complaints WHERE 1=1";
+    const params: any[] = [];
+
+    if (query) {
+      sql += " AND (subject_en LIKE ? OR subject_bn LIKE ? OR description_en LIKE ? OR description_bn LIKE ?)";
+      params.push(`%${query}%`, `%${query}%`, `%${query}%`, `%${query}%`);
+    }
+    if (phone) {
+      sql += " AND user_phone LIKE ?";
+      params.push(`%${phone}%`);
+    }
+    if (status) {
+      sql += " AND status = ?";
+      params.push(status);
+    }
+    if (from) {
+      sql += " AND created_at >= ?";
+      params.push(from);
+    }
+    if (to) {
+      sql += " AND created_at <= ?";
+      params.push(`${to} 23:59:59`);
+    }
+
+    sql += " ORDER BY created_at DESC";
+    const results = db.prepare(sql).all(...params);
+    res.json(results);
+  });
+
+  app.post("/api/admin/councilor", (req, res) => {
+    const { name_en, name_bn, career_en, career_bn, education_en, education_bn, social_service_en, social_service_bn, photo } = req.body;
+    try {
+      db.prepare(`
+        UPDATE councilor 
+        SET name_en = ?, name_bn = ?, career_en = ?, career_bn = ?, education_en = ?, education_bn = ?, social_service_en = ?, social_service_bn = ?, photo = ?, last_updated = CURRENT_TIMESTAMP
+        WHERE id = 1
+      `).run(name_en, name_bn, career_en, career_bn, education_en, education_bn, social_service_en, social_service_bn, photo);
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to update councilor profile" });
+    }
+  });
+
+  // Admin Voter Management
+  app.get("/api/admin/voters", (req, res) => {
+    const voters = db.prepare("SELECT * FROM voters ORDER BY created_at DESC").all();
+    res.json(voters);
+  });
+
+  app.post("/api/admin/voters", (req, res) => {
+    const { nid, dob, name_en, name_bn, father_name, mother_name, address, serial_no, polling_center_en, polling_center_bn, booth_no, photo } = req.body;
+    try {
+      db.prepare(`
+        INSERT INTO voters (nid, dob, name_en, name_bn, father_name, mother_name, address, serial_no, polling_center_en, polling_center_bn, booth_no, photo)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(nid, dob, name_en, name_bn, father_name, mother_name, address, serial_no, polling_center_en, polling_center_bn, booth_no, photo);
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to add voter" });
+    }
+  });
+
+  app.put("/api/admin/voters/:id", (req, res) => {
+    const { id } = req.params;
+    const { nid, dob, name_en, name_bn, father_name, mother_name, address, serial_no, polling_center_en, polling_center_bn, booth_no, photo } = req.body;
+    try {
+      db.prepare(`
+        UPDATE voters 
+        SET nid = ?, dob = ?, name_en = ?, name_bn = ?, father_name = ?, mother_name = ?, address = ?, serial_no = ?, polling_center_en = ?, polling_center_bn = ?, booth_no = ?, photo = ?
+        WHERE id = ?
+      `).run(nid, dob, name_en, name_bn, father_name, mother_name, address, serial_no, polling_center_en, polling_center_bn, booth_no, photo, id);
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to update voter" });
+    }
+  });
+
+  app.delete("/api/admin/voters/:id", (req, res) => {
+    const { id } = req.params;
+    try {
+      db.prepare("DELETE FROM voters WHERE id = ?").run(id);
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to delete voter" });
     }
   });
 

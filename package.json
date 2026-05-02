@@ -1,5 +1,6 @@
 {
-  "name": "react-example",
+  "name": "ward-29-portal",
+  "description": "Digital platform for Ward 29, DNCC (Mohammadpur) featuring voter slip generation, volunteer management, and citizen engagement.",
   "private": true,
   "version": "0.0.0",
   "type": "module",

@@ -12,6 +12,7 @@ export const translations = {
       news: "Latest News",
       gallery: "Gallery",
       support: "Support & About",
+      councilMembers: "Council Members",
       contact: "Contact Us",
       about: "About Us",
       privacy: "Privacy Policy",
@@ -73,9 +74,22 @@ export const translations = {
       news: "News",
       gallery: "Gallery",
       users: "Users",
+      voters: "Voters",
+      councilor: "Councilor Profile",
+      councilMembers: "Council Members",
       logout: "Logout",
       loginTitle: "Admin Login",
       loginSubtitle: "Access restricted to authorized personnel"
+    },
+    search: {
+      advanced: "Advanced Search",
+      name: "Search by Name",
+      phone: "Search by Phone",
+      from: "From Date",
+      to: "To Date",
+      status: "Status",
+      clear: "Clear Filters",
+      find: "Find Records"
     }
   },
   bn: {
@@ -91,6 +105,7 @@ export const translations = {
       news: "সর্বশেষ সংবাদ",
       gallery: "গ্যালারি",
       support: "সহায়তা ও তথ্য",
+      councilMembers: "পরিষদ সদস্য",
       contact: "যোগাযোগ",
       about: "আমাদের সম্পর্কে",
       privacy: "গোপনীয়তা নীতি",
@@ -152,9 +167,22 @@ export const translations = {
       news: "সংবাদ",
       gallery: "গ্যালারি",
       users: "ব্যবহারকারী",
+      voters: "ভোটার",
+      councilor: "কাউন্সিলর প্রোফাইল",
+      councilMembers: "পরিষদ সদস্য",
       logout: "লগআউট",
       loginTitle: "অ্যাডমিন লগইন",
       loginSubtitle: "শুধুমাত্র অনুমোদিত কর্মীদের জন্য"
+    },
+    search: {
+      advanced: "উন্নত অনুসন্ধান",
+      name: "নাম দিয়ে খুঁজুন",
+      phone: "ফোন দিয়ে খুঁজুন",
+      from: "শুরুর তারিখ",
+      to: "শেষ তারিখ",
+      status: "অবস্থা",
+      clear: "ফিল্টার মুছুন",
+      find: "রেকর্ড খুঁজুন"
     }
   }
 };
