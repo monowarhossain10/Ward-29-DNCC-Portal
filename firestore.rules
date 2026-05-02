@@ -1,0 +1,140 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 0. Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Helpers ---
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isEmailVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        request.auth.token.email == 'hmonowar32@gmail.com' ||
+        exists(/databases/$(database)/documents/admins/$(request.auth.token.email))
+      );
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // --- Entity Validations ---
+
+    function isValidVoter(data) {
+      return data.nid is string && data.nid.size() <= 20 &&
+             data.dob is string && data.dob.size() <= 10 &&
+             data.name_en is string && data.name_en.size() <= 100 &&
+             data.name_bn is string && data.name_bn.size() <= 100;
+    }
+
+    function isValidVolunteer(data) {
+      return data.name is string && data.name.size() <= 100 &&
+             data.phone is string && data.phone.size() <= 20 &&
+             data.email is string && data.email.size() <= 100 &&
+             data.status in ['pending', 'approved', 'rejected'] &&
+             (request.method == 'create' ? data.created_at == request.time : true);
+    }
+
+    function isValidComplaint(data) {
+      return data.tracking_id is string && data.tracking_id.size() <= 20 &&
+             data.name is string && data.name.size() <= 100 &&
+             data.phone is string && data.phone.size() <= 20 &&
+             data.subject is string && data.subject.size() <= 200 &&
+             data.message is string && data.message.size() <= 2000 &&
+             data.status in ['Open', 'In Progress', 'Resolved', 'Closed'] &&
+             (request.method == 'create' ? data.created_at == request.time : true);
+    }
+
+    function isValidNews(data) {
+      return data.title_en is string && data.title_en.size() <= 200 &&
+             data.title_bn is string && data.title_bn.size() <= 200 &&
+             data.content_en is string && data.content_en.size() <= 10000 &&
+             data.content_bn is string && data.content_bn.size() <= 10000;
+    }
+
+    function isValidEvent(data) {
+      return data.title_en is string && data.title_en.size() <= 200 &&
+             data.event_date is string && data.event_date.size() <= 10;
+    }
+
+    // --- Collection Rules ---
+
+    match /voters/{voterId} {
+      allow read: if isAdmin();
+      allow get: if isAdmin() || isSignedIn(); 
+      allow create: if isAdmin() && isValidVoter(incoming());
+      allow update: if isAdmin() && isValidVoter(incoming());
+      allow delete: if isAdmin();
+    }
+
+    match /volunteers/{volunteerId} {
+      allow list: if isAdmin();
+      allow get: if isAdmin();
+      allow create: if isValidVolunteer(incoming()) && incoming().status == 'pending';
+      allow update: if isAdmin() && incoming().diff(existing()).affectedKeys().hasOnly(['status']);
+      allow delete: if isAdmin();
+    }
+
+    match /complaints/{complaintId} {
+      allow list: if isAdmin();
+      allow get: if true; 
+      allow create: if isValidComplaint(incoming()) && incoming().status == 'Open';
+      allow update: if isAdmin() && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'admin_note']);
+      allow delete: if isAdmin();
+    }
+
+    match /news/{newsId} {
+      allow read: if true;
+      allow create: if isAdmin() && isValidNews(incoming());
+      allow update: if isAdmin() && isValidNews(incoming());
+      allow delete: if isAdmin();
+    }
+
+    match /events/{eventId} {
+      allow read: if true;
+      allow create: if isAdmin() && isValidEvent(incoming());
+      allow update: if isAdmin() && isValidEvent(incoming());
+      allow delete: if isAdmin();
+    }
+
+    match /gallery/{galleryId} {
+      allow read: if true;
+      allow create: if isAdmin();
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    match /admins/{adminId} {
+      allow read: if isAdmin();
+      allow write: if isAdmin();
+    }
+
+    match /settings/councilor {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /council_members/{memberId} {
+      allow read: if true;
+      allow create: if isAdmin();
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+  }
+}

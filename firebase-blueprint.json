@@ -1,0 +1,181 @@
+{
+  "entities": {
+    "Voter": {
+      "title": "Voter",
+      "description": "Resident voter information",
+      "type": "object",
+      "properties": {
+        "nid": { "type": "string" },
+        "dob": { "type": "string", "format": "date" },
+        "name_en": { "type": "string" },
+        "name_bn": { "type": "string" },
+        "father_name": { "type": "string" },
+        "mother_name": { "type": "string" },
+        "address": { "type": "string" },
+        "photo": { "type": "string" },
+        "serial_no": { "type": "string" },
+        "polling_center_en": { "type": "string" },
+        "polling_center_bn": { "type": "string" },
+        "booth_no": { "type": "string" },
+        "created_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["nid", "dob", "name_en", "name_bn"]
+    },
+    "Volunteer": {
+      "title": "Volunteer",
+      "description": "Volunteer application",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "phone": { "type": "string" },
+        "email": { "type": "string" },
+        "photo": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "approved", "rejected"] },
+        "created_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "phone", "email"]
+    },
+    "Complaint": {
+      "title": "Complaint",
+      "description": "Citizen complaint or suggestion",
+      "type": "object",
+      "properties": {
+        "tracking_id": { "type": "string" },
+        "name": { "type": "string" },
+        "phone": { "type": "string" },
+        "subject": { "type": "string" },
+        "message": { "type": "string" },
+        "status": { "type": "string", "enum": ["Open", "In Progress", "Resolved", "Closed"] },
+        "admin_note": { "type": "string" },
+        "created_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["tracking_id", "name", "phone", "subject", "message"]
+    },
+    "News": {
+      "title": "News",
+      "description": "Ward news announcement",
+      "type": "object",
+      "properties": {
+        "title_en": { "type": "string" },
+        "title_bn": { "type": "string" },
+        "content_en": { "type": "string" },
+        "content_bn": { "type": "string" },
+        "image": { "type": "string" },
+        "created_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title_en", "title_bn", "content_en", "content_bn"]
+    },
+    "Event": {
+      "title": "Event",
+      "description": "Ward event",
+      "type": "object",
+      "properties": {
+        "title_en": { "type": "string" },
+        "title_bn": { "type": "string" },
+        "description_en": { "type": "string" },
+        "description_bn": { "type": "string" },
+        "event_date": { "type": "string", "format": "date" },
+        "location_en": { "type": "string" },
+        "location_bn": { "type": "string" },
+        "image": { "type": "string" },
+        "created_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title_en", "title_bn", "event_date", "location_en"]
+    },
+    "GalleryItem": {
+      "title": "Gallery Item",
+      "description": "Photo for the gallery",
+      "type": "object",
+      "properties": {
+        "caption_en": { "type": "string" },
+        "caption_bn": { "type": "string" },
+        "image": { "type": "string" },
+        "created_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["image"]
+    },
+    "Admin": {
+      "title": "Admin",
+      "description": "Administrative user",
+      "type": "object",
+      "properties": {
+        "username": { "type": "string" },
+        "role": { "type": "string", "enum": ["SuperAdmin", "Admin"] },
+        "created_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["username", "role"]
+    },
+    "Councilor": {
+      "title": "Councilor",
+      "description": "Councilor profile information",
+      "type": "object",
+      "properties": {
+        "name_en": { "type": "string" },
+        "name_bn": { "type": "string" },
+        "career_en": { "type": "string" },
+        "career_bn": { "type": "string" },
+        "education_en": { "type": "string" },
+        "education_bn": { "type": "string" },
+        "social_service_en": { "type": "string" },
+        "social_service_bn": { "type": "string" },
+        "photo": { "type": "string" },
+        "last_updated": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name_en", "name_bn"]
+    },
+    "CouncilMember": {
+      "title": "Council Member",
+      "description": "Members of the council",
+      "type": "object",
+      "properties": {
+        "name_en": { "type": "string" },
+        "name_bn": { "type": "string" },
+        "position_en": { "type": "string" },
+        "position_bn": { "type": "string" },
+        "phone": { "type": "string" },
+        "email": { "type": "string" },
+        "photo": { "type": "string" },
+        "created_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name_en", "name_bn", "position_en", "position_bn"]
+    }
+  },
+  "firestore": {
+    "/voters/{voterId}": {
+      "schema": "Voter",
+      "description": "Collection of local voter data"
+    },
+    "/volunteers/{volunteerId}": {
+      "schema": "Volunteer",
+      "description": "Volunteer registrations"
+    },
+    "/complaints/{complaintId}": {
+      "schema": "Complaint",
+      "description": "Citizen complaints"
+    },
+    "/news/{newsId}": {
+      "schema": "News",
+      "description": "Ward announcements"
+    },
+    "/events/{eventId}": {
+      "schema": "Event",
+      "description": "Scheduled events"
+    },
+    "/gallery/{galleryId}": {
+      "schema": "GalleryItem",
+      "description": "Photo gallery items"
+    },
+    "/admins/{adminId}": {
+      "schema": "Admin",
+      "description": "Admins with high-level access (mapped from Firebase Auth UIDs)"
+    },
+    "/settings/councilor": {
+      "schema": "Councilor",
+      "description": "Singleton for councilor profile"
+    },
+    "/council_members/{memberId}": {
+      "schema": "CouncilMember",
+      "description": "List of council members"
+    }
+  }
+}

@@ -42,14 +42,68 @@ import {
   Users,
   Phone
 } from 'lucide-react';
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 import { translations } from './translations';
 import QRCode from 'qrcode';
+import { db, auth, signInWithGoogle, logout } from './lib/firebase';
+import { 
+  collection, 
+  getDocs, 
+  addDoc, 
+  updateDoc, 
+  deleteDoc, 
+  doc, 
+  query, 
+  where, 
+  orderBy, 
+  getDoc,
+  serverTimestamp,
+  setDoc,
+  onSnapshot
+} from 'firebase/firestore';
+import { onAuthStateChanged } from 'firebase/auth';
+
+enum OperationType {
+  CREATE = 'create',
+  UPDATE = 'update',
+  DELETE = 'delete',
+  LIST = 'list',
+  GET = 'get',
+  WRITE = 'write',
+}
+
+interface FirestoreErrorInfo {
+  error: string;
+  operationType: OperationType;
+  path: string | null;
+  authInfo: {
+    userId?: string | null;
+    email?: string | null;
+    emailVerified?: boolean | null;
+    isAnonymous?: boolean | null;
+  }
+}
+
+function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+  const errInfo: FirestoreErrorInfo = {
+    error: error instanceof Error ? error.message : String(error),
+    authInfo: {
+      userId: auth.currentUser?.uid,
+      email: auth.currentUser?.email,
+      emailVerified: auth.currentUser?.emailVerified,
+      isAnonymous: auth.currentUser?.isAnonymous,
+    },
+    operationType,
+    path
+  }
+  console.error('Firestore Error: ', JSON.stringify(errInfo));
+  throw new Error(JSON.stringify(errInfo));
+}
 
 type Language = 'en' | 'bn';
 
 interface Voter {
-  id: number;
+  id: string | number;
   nid: string;
   dob: string;
   name_en: string;
@@ -65,17 +119,17 @@ interface Voter {
 }
 
 interface Volunteer {
-  id: number;
+  id: string | number;
   name: string;
   phone: string;
   email: string;
   photo: string;
   status: 'pending' | 'approved';
-  created_at: string;
+  created_at: string | any;
 }
 
 interface Complaint {
-  id: number;
+  id: string | number;
   tracking_id: string;
   name: string;
   phone: string;
@@ -83,29 +137,29 @@ interface Complaint {
   message: string;
   status: string;
   admin_note: string;
-  created_at: string;
+  created_at: string | any;
 }
 
 interface NewsItem {
-  id: number;
+  id: string | number;
   title_en: string;
   title_bn: string;
   content_en: string;
   content_bn: string;
   image: string;
-  created_at: string;
+  created_at: string | any;
 }
 
 interface GalleryItem {
-  id: number;
+  id: string | number;
   caption_en: string;
   caption_bn: string;
   image: string;
-  created_at: string;
+  created_at: string | any;
 }
 
 interface EventItem {
-  id: number;
+  id: string | number;
   title_en: string;
   title_bn: string;
   description_en: string;
@@ -114,17 +168,17 @@ interface EventItem {
   location_en: string;
   location_bn: string;
   image: string;
-  created_at: string;
+  created_at: string | any;
 }
 
 interface AdminUser {
-  id: number;
+  id: string | number;
   username: string;
   role: 'Viewer' | 'Editor' | 'SuperAdmin';
 }
 
 interface Councilor {
-  id: number;
+  id: string | number;
   name_en: string;
   name_bn: string;
   career_en: string;
@@ -135,10 +189,12 @@ interface Councilor {
   social_service_bn: string;
   photo: string;
   last_updated: string;
+  message_en?: string;
+  message_bn?: string;
 }
 
 interface CouncilMember {
-  id: number;
+  id: string | number;
   name_en: string;
   name_bn: string;
   position_en: string;
@@ -146,7 +202,7 @@ interface CouncilMember {
   phone: string;
   email: string;
   photo: string;
-  created_at: string;
+  created_at: string | any;
 }
 
 export default function App() {
@@ -185,9 +241,8 @@ export default function App() {
   const [trackError, setTrackError] = useState('');
 
   // Admin State
-  const [adminUser, setAdminUser] = useState<AdminUser | null>(null);
-  const [adminUsername, setAdminUsername] = useState('');
-  const [adminPassword, setAdminPassword] = useState('');
+  const [adminUser, setAdminUser] = useState<any | null>(null);
+  const [isAdminReady, setIsAdminReady] = useState(false);
   const [adminLoginError, setAdminLoginError] = useState('');
   const [adminSubTab, setAdminSubTab] = useState<'volunteers' | 'complaints' | 'news' | 'gallery' | 'events' | 'users' | 'councilor' | 'voters' | 'council-members'>('volunteers');
   const [volunteers, setVolunteers] = useState<Volunteer[]>([]);
@@ -195,7 +250,7 @@ export default function App() {
   const [news, setNews] = useState<NewsItem[]>([]);
   const [gallery, setGallery] = useState<GalleryItem[]>([]);
   const [events, setEvents] = useState<EventItem[]>([]);
-  const [adminUsers, setAdminUsers] = useState<AdminUser[]>([]);
+  const [adminUsers, setAdminUsers] = useState<any[]>([]);
   const [adminVoters, setAdminVoters] = useState<Voter[]>([]);
   const [councilorProfile, setCouncilorProfile] = useState<Councilor | null>(null);
   const [councilMembers, setCouncilMembers] = useState<CouncilMember[]>([]);
@@ -208,7 +263,8 @@ export default function App() {
   const [newEvent, setNewEvent] = useState({ title_en: '', title_bn: '', description_en: '', description_bn: '', event_date: '', location_en: '', location_bn: '', image: '' });
   const [editingEvent, setEditingEvent] = useState<EventItem | null>(null);
   const [editingComplaint, setEditingComplaint] = useState<{ id: number, status: string, admin_note: string } | null>(null);
-  const [newUser, setNewUser] = useState({ username: '', password: '', role: 'Viewer' as const });
+  const [newUser, setNewUser] = useState({ email: '', role: 'Editor' as const, note: '' });
+  const [editingAdmin, setEditingAdmin] = useState<any | null>(null);
   const [newVoter, setNewVoter] = useState<Partial<Voter>>({ nid: '', dob: '', name_en: '', name_bn: '', father_name: '', mother_name: '', address: '', serial_no: '', polling_center_en: '', polling_center_bn: '', booth_no: '', photo: '' });
   const [editingVoter, setEditingVoter] = useState<Voter | null>(null);
   const [editCouncilor, setEditCouncilor] = useState<Councilor | null>(null);
@@ -558,6 +614,20 @@ export default function App() {
               </p>
             </div>
 
+            {councilorProfile.message_en && councilorProfile.message_bn && (
+              <div className={`p-8 rounded-3xl ${darkMode ? 'bg-emerald-900/20 border border-emerald-500/10' : 'bg-emerald-600 text-white'} space-y-4 shadow-xl relative overflow-hidden group`}>
+                <div className="absolute -right-4 -top-4 opacity-10 group-hover:rotate-12 transition-transform duration-700">
+                  <MessageSquare size={120} />
+                </div>
+                <h3 className="text-2xl font-black flex items-center gap-3">
+                  <MessageSquare size={24} /> {lang === 'bn' ? 'কাউন্সিলরের বার্তা' : "Councilor's Message"}
+                </h3>
+                <p className="text-lg font-medium leading-relaxed italic relative z-10">
+                  "{lang === 'bn' ? councilorProfile.message_bn : councilorProfile.message_en}"
+                </p>
+              </div>
+            )}
+
             <div className="flex items-center gap-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">
               <span>Last Updated: {new Date(councilorProfile.last_updated).toLocaleDateString()}</span>
             </div>
@@ -671,22 +741,125 @@ export default function App() {
     setActiveShareItem({ title, text, url });
   };
 
-  const fetchCouncilorProfile = async () => {
-    try {
-      const res = await fetch('/api/councilor');
-      if (res.ok) {
-        const data = await res.json();
-        setCouncilorProfile(data);
-        setEditCouncilor(data);
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (user) {
+        // Boostrapped SuperAdmin
+        if (user.email === 'hmonowar32@gmail.com') {
+          setAdminUser({ ...user, role: 'SuperAdmin' });
+        } else {
+          // Check whitelisted admins
+          try {
+            const adminDoc = await getDoc(doc(db, 'admins', user.email || ''));
+            if (adminDoc.exists()) {
+              setAdminUser({ ...user, ...adminDoc.data() });
+            } else {
+              setAdminUser(user); // Still a user, but role-based UI will hide everything
+            }
+          } catch (err) {
+            console.error("Auth role check failed:", err);
+            setAdminUser(user);
+          }
+        }
+      } else {
+        setAdminUser(null);
       }
+      setIsAdminReady(true);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  const handleAdminLogin = async () => {
+    try {
+      await signInWithGoogle();
+      setActiveTab('admin');
+    } catch (err) {
+      setAdminLoginError("Login failed");
+    }
+  };
+
+  const handleAdminLogout = async () => {
+    try {
+      await logout();
+      setAdminUser(null);
+      setActiveTab('home');
     } catch (err) {
       console.error(err);
     }
   };
 
+  const fetchAdminData = async () => {
+    // We'll use real-time listeners for some, manual fetch for others
+    try {
+      // Gallery
+      const qGallery = query(collection(db, 'gallery'), orderBy('created_at', 'desc'));
+      getDocs(qGallery).then(snap => setGallery(snap.docs.map(d => ({ id: d.id, ...d.data() } as any))));
+
+      // News
+      const qNews = query(collection(db, 'news'), orderBy('created_at', 'desc'));
+      getDocs(qNews).then(snap => setNews(snap.docs.map(d => ({ id: d.id, ...d.data() } as any))));
+
+      // Events
+      const qEvents = query(collection(db, 'events'), orderBy('event_date', 'asc'));
+      getDocs(qEvents).then(snap => setEvents(snap.docs.map(d => ({ id: d.id, ...d.data() } as any))));
+
+      // Council Members
+      const qMembers = query(collection(db, 'council_members'), orderBy('created_at', 'asc'));
+      getDocs(qMembers).then(snap => setCouncilMembers(snap.docs.map(d => ({ id: d.id, ...d.data() } as any))));
+
+      // Volunteers
+      const qVol = query(collection(db, 'volunteers'), orderBy('created_at', 'desc'));
+      getDocs(qVol).then(snap => setVolunteers(snap.docs.map(d => ({ id: d.id, ...d.data() } as any))));
+
+      // Complaints
+      const qComp = query(collection(db, 'complaints'), orderBy('created_at', 'desc'));
+      getDocs(qComp).then(snap => setAdminComplaints(snap.docs.map(d => ({ id: d.id, ...d.data() } as any))));
+
+      // Voters (Only first 100 for safety)
+      const qVoters = query(collection(db, 'voters'), orderBy('created_at', 'desc'));
+      getDocs(qVoters).then(snap => setAdminVoters(snap.docs.map(d => ({ id: d.id, ...d.data() } as any))));
+
+      // Admin Users
+      const qAdmins = query(collection(db, 'admins'), orderBy('created_at', 'desc'));
+      getDocs(qAdmins).then(snap => setAdminUsers(snap.docs.map(d => ({ id: d.id, ...d.data() } as any))));
+
+    } catch (err) {
+      console.error("Fetch Data Error:", err);
+    }
+  };
+
   useEffect(() => {
-    fetchAdminData();
-    fetchCouncilorProfile();
+    // Real-time Councilor Profile
+    const unsubCouncilor = onSnapshot(doc(db, 'settings', 'councilor'), (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data() as Councilor;
+        setCouncilorProfile(data);
+        setEditCouncilor(data);
+      }
+    }, (err) => {
+      console.error("Councilor snapshot error:", err);
+      handleFirestoreError(err, OperationType.GET, 'settings/councilor');
+    });
+
+    // Real-time news/events for public
+    const unsubNews = onSnapshot(query(collection(db, 'news'), orderBy('created_at', 'desc')), (snap) => {
+      setNews(snap.docs.map(d => ({ id: d.id, ...d.data() } as any)));
+    }, (err) => handleFirestoreError(err, OperationType.LIST, 'news'));
+
+    const unsubEvents = onSnapshot(query(collection(db, 'events'), orderBy('event_date', 'asc')), (snap) => {
+      setEvents(snap.docs.map(d => ({ id: d.id, ...d.data() } as any)));
+    }, (err) => handleFirestoreError(err, OperationType.LIST, 'events'));
+
+    const unsubGallery = onSnapshot(query(collection(db, 'gallery'), orderBy('created_at', 'desc')), (snap) => {
+      setGallery(snap.docs.map(d => ({ id: d.id, ...d.data() } as any)));
+    }, (err) => handleFirestoreError(err, OperationType.LIST, 'gallery'));
+
+    return () => {
+      unsubCouncilor();
+      unsubNews();
+      unsubEvents();
+      unsubGallery();
+    };
   }, []);
 
   const [activeShareItem, setActiveShareItem] = useState<{title: string, text: string, url: string} | null>(null);
@@ -746,22 +919,18 @@ export default function App() {
     setIsAiTyping(true);
 
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-      const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: [
-          { role: 'user', parts: [{ text: userMessage }] }
-        ],
-        config: {
-          systemInstruction: `You are a helpful Digital Union Parishad Assistant for residents of Bangladesh. 
-          Provide accurate information about citizen services like Birth Registration (BDRIS), Voter Slip/NID verification, volunteer registration (at Digital Union), and complaint filing. 
-          The Digital Union Parishad provides online verification for NID (Voter Slip), links to BDRIS for Birth Verification, and handles local community reports.
-          Respond in ${lang === 'bn' ? 'Bengali' : 'English'}. Keep responses concise, professional, and friendly. 
-          If you don't know something about a specific local union, advise them to visit the local Union Parishad office.`
-        }
+      const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
+      const model = genAI.getGenerativeModel({ 
+        model: "gemini-1.5-flash",
+        systemInstruction: `You are a helpful Digital Ward 29 Councilor Assistant for residents of Mohammadpur, Dhaka. 
+        Provide accurate information about citizen services like Voter Slip/NID verification, Birth Registration, volunteer registration, and complaint filing. 
+        Respond in ${lang === 'bn' ? 'Bengali' : 'English'}. Keep responses concise, professional, and friendly. 
+        If a user asks about the councilor, mention Md. Monowar Hossain.
+        If you don't know something, advise them to visit the Ward 29 Councilor Office at Mohammadpur.`
       });
       
-      const aiResponse = response.text || (lang === 'bn' ? "দুঃখিত, আমি এই মুহূর্তে উত্তর দিতে পারছি না।" : "Sorry, I couldn't process that request.");
+      const result = await model.generateContent(userMessage);
+      const aiResponse = result.response.text().trim() || (lang === 'bn' ? "দুঃখিত, আমি এই মুহূর্তে উত্তর দিতে পারছি না।" : "Sorry, I couldn't process that request.");
       setChatMessages(prev => [...prev, { role: 'ai', content: aiResponse }]);
     } catch (err) {
       console.error(err);
@@ -825,17 +994,20 @@ export default function App() {
   const handleVolunteerReg = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const res = await fetch('/api/volunteers/register', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: volName, phone: volPhone, email: volEmail, photo: volPhoto })
+      await addDoc(collection(db, 'volunteers'), {
+        name: volName,
+        phone: volPhone,
+        email: volEmail,
+        photo: volPhoto,
+        status: 'pending',
+        created_at: serverTimestamp()
       });
-      if (res.ok) {
-        setVolRegSuccess(true);
-        setVolName(''); setVolPhone(''); setVolEmail(''); setVolPhoto(null);
-      }
+      setVolRegSuccess(true);
+      setVolName(''); setVolPhone(''); setVolEmail(''); setVolPhoto(null);
+      showToast(lang === 'bn' ? 'আবেদন সফল হয়েছে!' : 'Registration successful!');
     } catch (err) {
       console.error(err);
+      handleFirestoreError(err, OperationType.CREATE, 'volunteers');
     }
   };
 
@@ -852,19 +1024,42 @@ export default function App() {
 
   const handleComplaintSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    const tracking_id = "W29-" + Math.random().toString(36).substring(2, 8).toUpperCase();
     try {
-      const res = await fetch('/api/complaints', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: compName, phone: compPhone, subject: compSub, message: compMsg })
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setCompTracking(data.tracking_id);
-        setCompName(''); setCompPhone(''); setCompSub(''); setCompMsg('');
+      // Generate AI Reply
+      let ai_reply = "";
+      try {
+        const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
+        const model = genAI.getGenerativeModel({ 
+          model: "gemini-1.5-flash",
+          systemInstruction: `You are an automated assistant for Ward 29 Councilor Office. 
+          When a citizen submits a complaint about ${compSub}, provide a professional and empathetic initial response in ${lang === 'bn' ? 'Bengali' : 'English'}.
+          Acknowledge their concern, tell them it has been logged with tracking ID ${tracking_id}, and mention that the councilor's team will review it shortly.
+          Keep it short (max 2-3 sentences).`
+        });
+        const result = await model.generateContent(`Complaint Subject: ${compSub}\nMessage: ${compMsg}`);
+        ai_reply = result.response.text();
+      } catch (aiErr) {
+        console.error("AI Reply generation failed:", aiErr);
+        ai_reply = lang === 'bn' ? "আপনার অভিযোগটি গ্রহণ করা হয়েছে। আমাদের টিম শীঘ্রই এটি পর্যালোচনা করবে।" : "Your complaint has been received. Our team will review it shortly.";
       }
+
+      await addDoc(collection(db, 'complaints'), {
+        tracking_id,
+        name: compName,
+        phone: compPhone,
+        subject: compSub,
+        message: compMsg,
+        status: 'Open',
+        admin_note: `[AI Assistant]: ${ai_reply}`,
+        created_at: serverTimestamp()
+      });
+      setCompTracking(tracking_id);
+      setCompName(''); setCompPhone(''); setCompSub(''); setCompMsg('');
+      showToast(lang === 'bn' ? 'অভিযোগ জমা হয়েছে!' : 'Complaint submitted!');
     } catch (err) {
       console.error(err);
+      handleFirestoreError(err, OperationType.CREATE, 'complaints');
     }
   };
 
@@ -873,321 +1068,378 @@ export default function App() {
     setTrackError('');
     setTrackedComplaint(null);
     try {
-      const res = await fetch(`/api/complaints/track/${trackId}`);
-      if (res.ok) {
-        const data = await res.json();
-        setTrackedComplaint(data);
+      const q = query(collection(db, 'complaints'), where('tracking_id', '==', trackId));
+      const snap = await getDocs(q);
+      if (!snap.empty) {
+        setTrackedComplaint({ id: snap.docs[0].id, ...snap.docs[0].data() } as any);
       } else {
-        setTrackError("Complaint not found with this ID.");
+        setTrackError(lang === 'bn' ? 'অভিযোগ পাওয়া যায়নি।' : "Complaint not found with this ID.");
       }
     } catch (err) {
+      console.error(err);
       setTrackError("Connection error");
     }
   };
 
-  const handleAdminLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setAdminLoginError('');
-    try {
-      const res = await fetch('/api/admin/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: adminUsername, password: adminPassword })
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setAdminUser(data);
-        setAdminUsername('');
-        setAdminPassword('');
-      } else {
-        setAdminLoginError('Invalid username or password');
-      }
-    } catch (err) {
-      setAdminLoginError('Connection error');
-    }
-  };
-
-  const fetchAdminData = async () => {
-    try {
-      const [vRes, cRes, nRes, gRes, eRes, uRes, vtRes, cmRes] = await Promise.all([
-        fetch('/api/volunteers'),
-        fetch('/api/admin/complaints'),
-        fetch('/api/news'),
-        fetch('/api/gallery'),
-        fetch('/api/events'),
-        fetch('/api/admin/users'),
-        fetch('/api/admin/voters'),
-        fetch('/api/admin/council-members')
-      ]);
-      if (vRes.ok) setVolunteers(await vRes.json());
-      if (cRes.ok) setAdminComplaints(await cRes.json());
-      if (nRes.ok) setNews(await nRes.json());
-      if (gRes.ok) setGallery(await gRes.json());
-      if (eRes.ok) setEvents(await eRes.json());
-      if (uRes.ok) setAdminUsers(await uRes.json());
-      if (vtRes.ok) setAdminVoters(await vtRes.json());
-      if (cmRes.ok) setCouncilMembers(await cmRes.json());
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
   const enhancedVolunteerSearch = async () => {
-    const params = new URLSearchParams(advVolSearch);
+    // Client-side filtering on the already fetched 'volunteers' state
+    // In a real app with 10k+ entries, we'd use Firestore queries
     try {
-      const res = await fetch(`/api/admin/search-volunteers?${params}`);
-      if (res.ok) setVolunteers(await res.json());
+      let q = query(collection(db, 'volunteers'));
+      if (advVolSearch.phone) q = query(q, where('phone', '==', advVolSearch.phone));
+      // Firestore limited in multi-field 'where' without composite indexes
+      // For now we'll do basic query and then filter in client if needed
+      const snap = await getDocs(q);
+      const results = snap.docs.map(d => ({ id: d.id, ...d.data() } as any));
+      
+      const filtered = results.filter((v: any) => {
+        const matchesQuery = !advVolSearch.query || v.name.toLowerCase().includes(advVolSearch.query.toLowerCase());
+        return matchesQuery;
+      });
+      setVolunteers(filtered);
     } catch (err) { console.error(err); }
   };
 
   const enhancedComplaintSearch = async () => {
-    const params = new URLSearchParams(advCompSearch);
     try {
-      const res = await fetch(`/api/admin/search-complaints?${params}`);
-      if (res.ok) setAdminComplaints(await res.json());
+      let q = query(collection(db, 'complaints'));
+      if (advCompSearch.phone) q = query(q, where('phone', '==', advCompSearch.phone));
+      if (advCompSearch.status) q = query(q, where('status', '==', advCompSearch.status));
+      
+      const snap = await getDocs(q);
+      const results = snap.docs.map(d => ({ id: d.id, ...d.data() } as any));
+      
+      const filtered = results.filter((c: any) => {
+        const matchesQuery = !advCompSearch.query || 
+          c.subject.toLowerCase().includes(advCompSearch.query.toLowerCase()) ||
+          c.message.toLowerCase().includes(advCompSearch.query.toLowerCase());
+        return matchesQuery;
+      });
+      setAdminComplaints(filtered);
     } catch (err) { console.error(err); }
   };
 
   const addCouncilMember = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!adminUser || adminUser.role !== 'SuperAdmin') return;
+    if (!adminUser) return;
     try {
-      const res = await fetch('/api/admin/council-members', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newCouncilMember)
+      await addDoc(collection(db, 'council_members'), {
+        ...newCouncilMember,
+        created_at: serverTimestamp()
       });
-      if (res.ok) {
-        setNewCouncilMember({ name_en: '', name_bn: '', position_en: '', position_bn: '', phone: '', email: '', photo: '' });
-        fetchAdminData();
-        showToast(lang === 'bn' ? 'সদস্য যোগ করা হয়েছে' : 'Member added successfully');
-      }
-    } catch (err) { console.error(err); }
+      setNewCouncilMember({ name_en: '', name_bn: '', position_en: '', position_bn: '', phone: '', email: '', photo: '' });
+      fetchAdminData();
+      showToast(lang === 'bn' ? 'সদস্য যোগ করা হয়েছে' : 'Member added successfully');
+    } catch (err) { 
+      console.error(err);
+      handleFirestoreError(err, OperationType.CREATE, 'council_members');
+    }
   };
 
-  const deleteCouncilMember = async (id: number) => {
-    if (!adminUser || adminUser.role !== 'SuperAdmin') return;
+  const deleteCouncilMember = async (id: string) => {
+    if (!adminUser) return;
     try {
-      const res = await fetch(`/api/admin/council-members/${id}`, { method: 'DELETE' });
-      if (res.ok) {
-        setDeleteConfirm(null);
-        fetchAdminData();
-        showToast(lang === 'bn' ? 'সদস্য মুছে ফেলা হয়েছে' : 'Member deleted successfully');
-      }
-    } catch (err) { console.error(err); }
+      await deleteDoc(doc(db, 'council_members', id));
+      setDeleteConfirm(null);
+      fetchAdminData();
+      showToast(lang === 'bn' ? 'সদস্য মুছে ফেলা হয়েছে' : 'Member deleted successfully');
+    } catch (err) { 
+      console.error(err);
+      handleFirestoreError(err, OperationType.DELETE, 'council_members/' + id);
+    }
   };
 
   const addVoter = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!adminUser || adminUser.role === 'Viewer') return;
-    await fetch('/api/admin/voters', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(newVoter)
-    });
-    setNewVoter({ nid: '', dob: '', name_en: '', name_bn: '', father_name: '', mother_name: '', address: '', serial_no: '', polling_center_en: '', polling_center_bn: '', booth_no: '', photo: '' });
-    fetchAdminData();
-    showToast(lang === 'bn' ? 'ভোটার যোগ করা হয়েছে' : 'Voter added successfully');
+    if (!adminUser) return;
+    try {
+      await addDoc(collection(db, 'voters'), {
+        ...newVoter,
+        created_at: serverTimestamp()
+      });
+      setNewVoter({ nid: '', dob: '', name_en: '', name_bn: '', father_name: '', mother_name: '', address: '', serial_no: '', polling_center_en: '', polling_center_bn: '', booth_no: '', photo: '' });
+      fetchAdminData();
+      showToast(lang === 'bn' ? 'ভোটার যোগ করা হয়েছে' : 'Voter added successfully');
+    } catch (err) {
+      console.error(err);
+      handleFirestoreError(err, OperationType.CREATE, 'voters');
+    }
   };
 
-  const deleteVoter = async (id: number) => {
-    if (!adminUser || adminUser.role !== 'SuperAdmin') return;
-    await fetch(`/api/admin/voters/${id}`, { method: 'DELETE' });
-    setDeleteConfirm(null);
-    fetchAdminData();
-    showToast(lang === 'bn' ? 'ভোটার মুছে ফেলা হয়েছে' : 'Voter deleted successfully');
+  const deleteVoter = async (id: string) => {
+    if (!adminUser) return;
+    try {
+      await deleteDoc(doc(db, 'voters', id));
+      setDeleteConfirm(null);
+      fetchAdminData();
+      showToast(lang === 'bn' ? 'ভোটার মুছে ফেলা হয়েছে' : 'Voter deleted successfully');
+    } catch (err) {
+      console.error(err);
+      handleFirestoreError(err, OperationType.DELETE, 'voters/' + id);
+    }
   };
 
   const updateVoter = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!adminUser || adminUser.role === 'Viewer' || !editingVoter) return;
+    if (!adminUser || !editingVoter) return;
     try {
-      const res = await fetch(`/api/admin/voters/${editingVoter.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(editingVoter)
-      });
-      if (res.ok) {
-        setEditingVoter(null);
-        fetchAdminData();
-        showToast(lang === 'bn' ? 'ভোটার তথ্য আপডেট করা হয়েছে' : 'Voter information updated');
-      }
+      const { id, ...data } = editingVoter;
+      await updateDoc(doc(db, 'voters', id.toString()), data);
+      setEditingVoter(null);
+      fetchAdminData();
+      showToast(lang === 'bn' ? 'ভোটার তথ্য আপডেট করা হয়েছে' : 'Voter information updated');
     } catch (err) {
       console.error(err);
+      handleFirestoreError(err, OperationType.UPDATE, 'voters/' + editingVoter.id);
     }
   };
 
   const addEvent = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!adminUser || adminUser.role === 'Viewer') return;
-    await fetch('/api/admin/events', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(newEvent)
-    });
-    setNewEvent({ title_en: '', title_bn: '', description_en: '', description_bn: '', event_date: '', location_en: '', location_bn: '', image: '' });
-    fetchAdminData();
-    showToast(lang === 'bn' ? 'ইভেন্ট তৈরি করা হয়েছে' : 'Event created successfully');
+    if (!adminUser) return;
+    try {
+      await addDoc(collection(db, 'events'), {
+        ...newEvent,
+        created_at: serverTimestamp()
+      });
+      setNewEvent({ title_en: '', title_bn: '', description_en: '', description_bn: '', event_date: '', location_en: '', location_bn: '', image: '' });
+      fetchAdminData();
+      showToast(lang === 'bn' ? 'ইভেন্ট তৈরি করা হয়েছে' : 'Event created successfully');
+    } catch (err) {
+      console.error(err);
+      handleFirestoreError(err, OperationType.CREATE, 'events');
+    }
   };
 
   const updateEvent = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!adminUser || adminUser.role === 'Viewer' || !editingEvent) return;
-    await fetch(`/api/admin/events/${editingEvent.id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(editingEvent)
-    });
-    setEditingEvent(null);
-    fetchAdminData();
-    showToast(lang === 'bn' ? 'ইভেন্ট আপডেট করা হয়েছে' : 'Event updated successfully');
+    if (!adminUser || !editingEvent) return;
+    try {
+      const { id, ...data } = editingEvent;
+      await updateDoc(doc(db, 'events', id.toString()), data);
+      setEditingEvent(null);
+      fetchAdminData();
+      showToast(lang === 'bn' ? 'ইভেন্ট আপডেট করা হয়েছে' : 'Event updated successfully');
+    } catch (err) {
+      console.error(err);
+      handleFirestoreError(err, OperationType.UPDATE, 'events/' + editingEvent.id);
+    }
   };
 
-  const deleteEvent = async (id: number) => {
-    if (!adminUser || adminUser.role === 'Viewer') return;
-    await fetch(`/api/admin/events/${id}`, { method: 'DELETE' });
-    setDeleteConfirm(null);
-    fetchAdminData();
-    showToast(lang === 'bn' ? 'ইভেন্ট মুছে ফেলা হয়েছে' : 'Event deleted');
+  const deleteEvent = async (id: string) => {
+    if (!adminUser) return;
+    try {
+      await deleteDoc(doc(db, 'events', id));
+      setDeleteConfirm(null);
+      fetchAdminData();
+      showToast(lang === 'bn' ? 'ইভেন্ট মুছে ফেলা হয়েছে' : 'Event deleted');
+    } catch (err) {
+      console.error(err);
+      handleFirestoreError(err, OperationType.DELETE, 'events/' + id);
+    }
   };
 
-  const approveVolunteer = async (id: number) => {
-    if (!adminUser || adminUser.role === 'Viewer') return;
-    await fetch('/api/volunteers/approve', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id })
-    });
-    fetchAdminData();
+  const approveVolunteer = async (id: string) => {
+    if (!adminUser) return;
+    try {
+      await updateDoc(doc(db, 'volunteers', id), { status: 'approved' });
+      fetchAdminData();
+      showToast(lang === 'bn' ? 'স্বেচ্ছাসেবক অনুমোদিত' : 'Volunteer approved');
+    } catch (err) {
+      console.error(err);
+      handleFirestoreError(err, OperationType.UPDATE, 'volunteers/' + id);
+    }
+  };
+
+  const suggestAiReply = async () => {
+    if (!editingComplaint) return;
+    const complaint = adminComplaints.find(c => c.id === editingComplaint.id);
+    if (!complaint) return;
+
+    setIsAiTyping(true);
+    try {
+      const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
+      const model = genAI.getGenerativeModel({ 
+        model: "gemini-1.5-flash",
+        systemInstruction: `You are a professional assistant for Ward 29 Councilor Office. 
+        Analyze the citizen complaint and suggest a professional, empathetic, and action-oriented response in ${lang === 'bn' ? 'Bengali' : 'English'}.
+        Identify yourself as the 'Councilor's Office'.
+        Keep it concise (2-4 sentences).`
+      });
+      const result = await model.generateContent(`Subject: ${complaint.subject}\nMessage: ${complaint.message}`);
+      setEditingComplaint({ ...editingComplaint, admin_note: result.response.text().trim() });
+    } catch (err) {
+      console.error("AI Auto-reply failed:", err);
+      showToast(lang === 'bn' ? 'এআই উত্তর তৈরি করতে ব্যর্থ হয়েছে' : 'Failed to generate AI suggestion');
+    } finally {
+      setIsAiTyping(false);
+    }
   };
 
   const updateComplaint = async () => {
-    if (!adminUser || adminUser.role === 'Viewer' || !editingComplaint) return;
-    await fetch('/api/admin/complaints/update', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(editingComplaint)
-    });
-    setEditingComplaint(null);
-    fetchAdminData();
+    if (!adminUser || !editingComplaint) return;
+    try {
+      const { id, status, admin_note } = editingComplaint;
+      await updateDoc(doc(db, 'complaints', id.toString()), { status, admin_note });
+      setEditingComplaint(null);
+      fetchAdminData();
+      showToast(lang === 'bn' ? 'অভিযোগ আপডেট করা হয়েছে' : 'Complaint updated');
+    } catch (err) {
+      console.error(err);
+      handleFirestoreError(err, OperationType.UPDATE, 'complaints/' + editingComplaint.id);
+    }
   };
 
   const addNews = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!adminUser || adminUser.role === 'Viewer') return;
-    await fetch('/api/admin/news', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(newNews)
-    });
-    setNewNews({ title_en: '', title_bn: '', content_en: '', content_bn: '', image: '' });
-    fetchAdminData();
-    showToast(lang === 'bn' ? 'সংবাদ যোগ করা হয়েছে' : 'News added successfully');
+    if (!adminUser) return;
+    try {
+      await addDoc(collection(db, 'news'), {
+        ...newNews,
+        created_at: serverTimestamp()
+      });
+      setNewNews({ title_en: '', title_bn: '', content_en: '', content_bn: '', image: '' });
+      fetchAdminData();
+      showToast(lang === 'bn' ? 'সংবাদ যোগ করা হয়েছে' : 'News added successfully');
+    } catch (err) {
+      console.error(err);
+      handleFirestoreError(err, OperationType.CREATE, 'news');
+    }
   };
 
-  const deleteNews = async (id: number) => {
-    if (!adminUser || adminUser.role === 'Viewer') return;
-    await fetch(`/api/admin/news/${id}`, { method: 'DELETE' });
-    setDeleteConfirm(null);
-    fetchAdminData();
-    showToast(lang === 'bn' ? 'সংবাদ মুছে ফেলা হয়েছে' : 'News deleted successfully');
+  const deleteNews = async (id: string) => {
+    if (!adminUser) return;
+    try {
+      await deleteDoc(doc(db, 'news', id));
+      setDeleteConfirm(null);
+      fetchAdminData();
+      showToast(lang === 'bn' ? 'সংবাদ মুছে ফেলা হয়েছে' : 'News deleted successfully');
+    } catch (err) {
+      console.error(err);
+      handleFirestoreError(err, OperationType.DELETE, 'news/' + id);
+    }
   };
 
   const updateNews = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!adminUser || adminUser.role === 'Viewer' || !editingNews) return;
+    if (!adminUser || !editingNews) return;
     try {
-      const res = await fetch(`/api/admin/news/${editingNews.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(editingNews)
-      });
-      if (res.ok) {
-        setEditingNews(null);
-        fetchAdminData();
-        showToast(lang === 'bn' ? 'সংবাদ আপডেট করা হয়েছে' : 'News updated successfully');
-      }
+      const { id, ...data } = editingNews;
+      await updateDoc(doc(db, 'news', id.toString()), data);
+      setEditingNews(null);
+      fetchAdminData();
+      showToast(lang === 'bn' ? 'সংবাদ আপডেট করা হয়েছে' : 'News updated successfully');
     } catch (err) {
       console.error(err);
+      handleFirestoreError(err, OperationType.UPDATE, 'news/' + editingNews.id);
     }
   };
 
   const addGallery = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!adminUser || adminUser.role === 'Viewer') return;
-    await fetch('/api/admin/gallery', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(newGallery)
-    });
-    setNewGallery({ caption_en: '', caption_bn: '', image: '' });
-    fetchAdminData();
-    showToast(lang === 'bn' ? 'গ্যালারি আইটেম যোগ করা হয়েছে' : 'Gallery item added successfully');
+    if (!adminUser) return;
+    try {
+      await addDoc(collection(db, 'gallery'), {
+        ...newGallery,
+        created_at: serverTimestamp()
+      });
+      setNewGallery({ caption_en: '', caption_bn: '', image: '' });
+      fetchAdminData();
+      showToast(lang === 'bn' ? 'গ্যালারি আইটেম যোগ করা হয়েছে' : 'Gallery item added successfully');
+    } catch (err) {
+      console.error(err);
+      handleFirestoreError(err, OperationType.CREATE, 'gallery');
+    }
   };
 
-  const deleteGallery = async (id: number) => {
-    if (!adminUser || adminUser.role === 'Viewer') return;
-    await fetch(`/api/admin/gallery/${id}`, { method: 'DELETE' });
-    setDeleteConfirm(null);
-    fetchAdminData();
-    showToast(lang === 'bn' ? 'গ্যালারি আইটেম মুছে ফেলা হয়েছে' : 'Gallery item deleted successfully');
+  const deleteGallery = async (id: string) => {
+    if (!adminUser) return;
+    try {
+      await deleteDoc(doc(db, 'gallery', id));
+      setDeleteConfirm(null);
+      fetchAdminData();
+      showToast(lang === 'bn' ? 'গ্যালারি আইটেম মুছে ফেলা হয়েছে' : 'Gallery item deleted successfully');
+    } catch (err) {
+      console.error(err);
+      handleFirestoreError(err, OperationType.DELETE, 'gallery/' + id);
+    }
   };
 
   const updateGallery = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!adminUser || adminUser.role === 'Viewer' || !editingGallery) return;
+    if (!adminUser || !editingGallery) return;
     try {
-      const res = await fetch(`/api/admin/gallery/${editingGallery.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(editingGallery)
-      });
-      if (res.ok) {
-        setEditingGallery(null);
-        fetchAdminData();
-        showToast(lang === 'bn' ? 'গ্যালারি আইটেম আপডেট করা হয়েছে' : 'Gallery item updated successfully');
-      }
+      const { id, ...data } = editingGallery;
+      await updateDoc(doc(db, 'gallery', id.toString()), data);
+      setEditingGallery(null);
+      fetchAdminData();
+      showToast(lang === 'bn' ? 'গ্যালারি আইটেম আপডেট করা হয়েছে' : 'Gallery item updated successfully');
     } catch (err) {
       console.error(err);
+      handleFirestoreError(err, OperationType.UPDATE, 'gallery/' + editingGallery.id);
     }
   };
 
   const updateCouncilorProfile = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!adminUser || adminUser.role !== 'SuperAdmin' || !editCouncilor) return;
+    if (!adminUser || !editCouncilor) return;
     try {
-      const res = await fetch('/api/admin/councilor', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(editCouncilor)
-      });
-      if (res.ok) {
-        fetchCouncilorProfile();
-        showToast(lang === 'bn' ? 'কাউন্সিলর প্রোফাইল আপডেট করা হয়েছে' : 'Councilor profile updated successfully');
-      }
+      await setDoc(doc(db, 'settings', 'councilor'), {
+        ...editCouncilor,
+        last_updated: new Date().toISOString()
+      }, { merge: true });
+      showToast(lang === 'bn' ? 'কাউন্সিলর প্রোফাইল আপডেট করা হয়েছে' : 'Councilor profile updated successfully');
     } catch (err) {
       console.error(err);
-      showToast(lang === 'bn' ? 'আপডেট ব্যর্থ হয়েছে' : 'Update failed', 'error');
+      handleFirestoreError(err, OperationType.WRITE, 'settings/councilor');
     }
   };
 
   const addAdminUser = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!adminUser || adminUser.role !== 'SuperAdmin') return;
-    await fetch('/api/admin/users', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(newUser)
-    });
-    setNewUser({ username: '', password: '', role: 'Viewer' });
-    fetchAdminData();
+    if (!adminUser) return;
+    try {
+      const adminId = newUser.email; 
+      await setDoc(doc(db, 'admins', adminId), {
+        email: newUser.email,
+        role: newUser.role,
+        note: newUser.note,
+        created_at: serverTimestamp()
+      });
+      setNewUser({ email: '', role: 'Editor', note: '' });
+      fetchAdminData();
+      showToast(lang === 'bn' ? 'অ্যাডমিন যোগ করা হয়েছে' : 'Admin user added successfully');
+    } catch (err) {
+      console.error(err);
+      handleFirestoreError(err, OperationType.CREATE, 'admins');
+    }
   };
 
-  const deleteAdminUser = async (id: number) => {
-    if (!adminUser || adminUser.role !== 'SuperAdmin') return;
-    await fetch(`/api/admin/users/${id}`, { method: 'DELETE' });
-    setDeleteConfirm(null);
-    fetchAdminData();
+  const deleteAdminUser = async (id: string) => {
+    if (!adminUser) return;
+    try {
+      await deleteDoc(doc(db, 'admins', id));
+      showToast(lang === 'bn' ? 'অ্যাডমিন মুছে ফেলা হয়েছে' : 'Admin user removed');
+      fetchAdminData();
+    } catch (err) {
+      console.error(err);
+      handleFirestoreError(err, OperationType.DELETE, 'admins/' + id);
+    }
+  };
+
+  const updateAdminUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!adminUser || !editingAdmin) return;
+    try {
+      const { id, ...data } = editingAdmin;
+      await updateDoc(doc(db, 'admins', id), data);
+      setEditingAdmin(null);
+      fetchAdminData();
+      showToast(lang === 'bn' ? 'অ্যাডমিন আপডেট করা হয়েছে' : 'Admin updated successfully');
+    } catch (err) {
+      console.error(err);
+      handleFirestoreError(err, OperationType.UPDATE, 'admins/' + editingAdmin.id);
+    }
   };
 
   useEffect(() => {
@@ -1970,38 +2222,36 @@ export default function App() {
               className="space-y-8"
             >
               {!adminUser ? (
-                <div className="max-w-md mx-auto card p-8 space-y-6">
-                  <div className="text-center">
-                    <div className="w-16 h-16 bg-slate-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                      <ShieldCheck className="text-slate-600" size={32} />
-                    </div>
-                    <h2 className="text-2xl font-bold">{t.admin.loginTitle}</h2>
-                    <p className="text-slate-500 text-sm">{t.admin.loginSubtitle}</p>
+                <div className="max-w-md mx-auto card p-8 space-y-6 text-center">
+                  <div className="w-20 h-20 bg-emerald-50 text-emerald-600 rounded-[2rem] flex items-center justify-center mx-auto mb-6 rotate-3 hover:rotate-0 transition-transform">
+                    <ShieldCheck size={40} />
                   </div>
-                  <form onSubmit={handleAdminLogin} className="space-y-4">
-                    <div>
-                      <label className="block text-sm font-semibold text-slate-700 mb-1">Username</label>
-                      <input 
-                        type="text" 
-                        required 
-                        value={adminUsername} 
-                        onChange={e => setAdminUsername(e.target.value)} 
-                        className="w-full px-4 py-2 rounded-lg border border-slate-200 outline-none focus:ring-2 focus:ring-emerald-500" 
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-semibold text-slate-700 mb-1">Password</label>
-                      <input 
-                        type="password" 
-                        required 
-                        value={adminPassword} 
-                        onChange={e => setAdminPassword(e.target.value)} 
-                        className="w-full px-4 py-2 rounded-lg border border-slate-200 outline-none focus:ring-2 focus:ring-emerald-500" 
-                      />
-                    </div>
-                    {adminLoginError && <p className="text-red-600 text-xs font-bold">{adminLoginError}</p>}
-                    <button type="submit" className="w-full btn-primary py-3">Login to Dashboard</button>
-                  </form>
+                  <div className="space-y-2">
+                    <h2 className="text-3xl font-black text-slate-900">{t.admin.loginTitle || 'Admin Access'}</h2>
+                    <p className="text-slate-500 font-medium">{t.admin.loginSubtitle || 'Sign in to manage Ward 29 services'}</p>
+                  </div>
+                  
+                  <div className="pt-4">
+                    <button
+                      onClick={handleAdminLogin}
+                      className="w-full flex items-center justify-center gap-4 bg-white border-2 border-slate-200 py-4 rounded-2xl font-black text-slate-700 hover:bg-slate-50 hover:border-emerald-300 transition-all shadow-xl hover:shadow-2xl active:scale-[0.98] group"
+                    >
+                      <img src="https://www.google.com/favicon.ico" className="w-6 h-6 grayscale group-hover:grayscale-0 transition-all" alt="Google" />
+                      {t.admin.loginBtn || 'Sign in with Google'}
+                    </button>
+                  </div>
+
+                  <div className="relative pt-6">
+                    <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-slate-100"></div></div>
+                    <div className="relative flex justify-center text-[10px] uppercase font-black tracking-[0.2em]"><span className="px-4 bg-white text-slate-300">Authorized Personnel Only</span></div>
+                  </div>
+
+                  {adminLoginError && (
+                    <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="p-4 bg-red-50 border border-red-100 rounded-xl flex items-center gap-3 text-red-600">
+                      <AlertCircle size={18} />
+                      <p className="text-xs font-bold text-left">{adminLoginError}</p>
+                    </motion.div>
+                  )}
                 </div>
               ) : (
                 <div className="flex flex-col lg:flex-row gap-8 min-h-[600px]">
@@ -2394,13 +2644,25 @@ export default function App() {
                                     <option>Resolved</option>
                                   </select>
                                 </div>
-                                <div>
-                                  <label className="block text-xs font-bold text-slate-500 mb-1">Admin Note</label>
-                                  <input 
-                                    type="text"
+                                <div className="space-y-1">
+                                  <div className="flex items-center justify-between gap-1 mb-1">
+                                    <label className="block text-xs font-black text-slate-400 uppercase tracking-widest ml-1">Admin Note</label>
+                                    <button 
+                                      type="button" 
+                                      onClick={suggestAiReply}
+                                      disabled={isAiTyping}
+                                      className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-emerald-600 hover:text-emerald-700 bg-emerald-50 px-2 py-1 rounded-lg transition-all disabled:opacity-50"
+                                    >
+                                      {isAiTyping ? <div className="w-2 h-2 rounded-full bg-emerald-600 animate-pulse" /> : <Sparkles size={10} />}
+                                      {lang === 'bn' ? 'এআই পরামর্শ' : 'AI Suggest'}
+                                    </button>
+                                  </div>
+                                  <textarea 
+                                    rows={3}
                                     value={editingComplaint.admin_note}
                                     onChange={e => setEditingComplaint({...editingComplaint, admin_note: e.target.value})}
-                                    className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm"
+                                    className="w-full px-4 py-3 rounded-xl border border-slate-200 text-sm font-medium focus:ring-2 focus:ring-emerald-500 outline-none resize-none"
+                                    placeholder={lang === 'bn' ? 'অ্যাডমিন নোট...' : 'Add internal note or reply...'}
                                   />
                                 </div>
                               </div>
@@ -2580,6 +2842,45 @@ export default function App() {
                     </div>
                   )}
 
+                  {adminSubTab === 'councilor' && !editCouncilor && (
+                    <div className="card p-12 text-center space-y-6 animate-in fade-in zoom-in">
+                      <div className="w-24 h-24 bg-emerald-50 text-emerald-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                        <UserPlus size={48} />
+                      </div>
+                      <div className="space-y-2">
+                        <h3 className="text-2xl font-black text-slate-800 uppercase tracking-tight">Profile Not Formed</h3>
+                        <p className="text-slate-500 font-medium max-w-md mx-auto">The digital identity for Ward 29 Councilor hasn't been established in the database yet.</p>
+                      </div>
+                      <button 
+                        onClick={async () => {
+                          const initial = {
+                            name_en: "Md. Monowar Hossain",
+                            name_bn: "মো: মনোয়ার হোসেন",
+                            career_en: "Add political career here...",
+                            career_bn: "এখানে রাজনৈতিক কর্মজীবন যোগ করুন...",
+                            social_service_en: "Add social services here...",
+                            social_service_bn: "এখানে সামাজিক সেবা যোগ করুন...",
+                            message_en: "Add councilor's message here...",
+                            message_bn: "এখানে কাউন্সিলরের বার্তা যোগ করুন...",
+                            education_en: "Add education here...",
+                            education_bn: "এখানে শিক্ষা যোগ করুন...",
+                            photo: "",
+                            last_updated: new Date().toISOString()
+                          };
+                          try {
+                            await setDoc(doc(db, 'settings', 'councilor'), initial);
+                            showToast(lang === 'bn' ? 'কাউন্সিলর প্রোফাইল তৈরি করা হয়েছে' : 'Councilor profile initialized');
+                          } catch (err) {
+                            console.error(err);
+                          }
+                        }}
+                        className="btn-primary px-8 py-4 text-lg shadow-xl"
+                      >
+                        Initialize Councilor Profile
+                      </button>
+                    </div>
+                  )}
+
                   {adminSubTab === 'councilor' && editCouncilor && (
                     <div className="card p-8 space-y-8 animate-in fade-in slide-in-from-bottom-4 text-slate-800">
                       <div className="flex items-center justify-between">
@@ -2638,6 +2939,14 @@ export default function App() {
                             </p>
                             <textarea rows={6} required value={editCouncilor.social_service_en} onChange={e => setEditCouncilor({...editCouncilor, social_service_en: e.target.value})} placeholder="English description..." className="w-full px-4 py-3 rounded-xl border border-slate-200 text-sm font-medium focus:ring-2 focus:ring-emerald-500 outline-none resize-none"></textarea>
                             <textarea rows={6} required value={editCouncilor.social_service_bn} onChange={e => setEditCouncilor({...editCouncilor, social_service_bn: e.target.value})} placeholder="Bengali description..." className="w-full px-4 py-3 rounded-xl border border-slate-200 text-sm font-medium focus:ring-2 focus:ring-emerald-500 outline-none resize-none"></textarea>
+                          </div>
+
+                          <div className="md:col-span-2 space-y-4">
+                            <p className="text-xs font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                              <MessageSquare size={14} className="text-emerald-500" /> Councilor's Message
+                            </p>
+                            <textarea rows={3} required value={editCouncilor.message_en} onChange={e => setEditCouncilor({...editCouncilor, message_en: e.target.value})} placeholder="English message..." className="w-full px-4 py-3 rounded-xl border border-slate-200 text-sm font-medium focus:ring-2 focus:ring-emerald-500 outline-none resize-none"></textarea>
+                            <textarea rows={3} required value={editCouncilor.message_bn} onChange={e => setEditCouncilor({...editCouncilor, message_bn: e.target.value})} placeholder="Bengali message..." className="w-full px-4 py-3 rounded-xl border border-slate-200 text-sm font-medium focus:ring-2 focus:ring-emerald-500 outline-none resize-none"></textarea>
                           </div>
 
                           <div className="md:col-span-2 space-y-4">
@@ -2841,65 +3150,118 @@ export default function App() {
                   )}
 
                   {adminSubTab === 'users' && (
-                    <div className="grid lg:grid-cols-3 gap-8">
+                    <div className="grid lg:grid-cols-3 gap-8 animate-in fade-in slide-in-from-bottom-4">
                       <div className="lg:col-span-1">
-                        <form onSubmit={addAdminUser} className="card p-6 space-y-4 sticky top-24">
-                            <h3 className="font-bold flex items-center justify-between gap-2">
-                              <div className="flex items-center gap-2"><Plus size={18} /> Add Admin User</div>
-                              <div className="group/tip relative">
-                                <HelpCircle size={14} className="text-slate-300 hover:text-emerald-500 cursor-help" />
-                                <div className="absolute bottom-full right-0 mb-2 w-48 p-2 bg-slate-900 text-[10px] text-white rounded-lg opacity-0 invisible group-hover/tip:opacity-100 group-hover/tip:visible transition-all shadow-xl z-50 pointer-events-none">
-                                  <p><span className="text-emerald-400">SuperAdmin:</span> All features</p>
-                                  <p><span className="text-blue-300">Editor:</span> Manage content only</p>
-                                  <p><span className="text-slate-400">Viewer:</span> Read only access</p>
-                                </div>
-                              </div>
-                            </h3>
-                          <input type="text" placeholder="Username" required value={newUser.username} onChange={e => setNewUser({...newUser, username: e.target.value})} className="w-full px-4 py-2 rounded-lg border border-slate-200 text-sm" />
-                          <input type="password" placeholder="Password" required value={newUser.password} onChange={e => setNewUser({...newUser, password: e.target.value})} className="w-full px-4 py-2 rounded-lg border border-slate-200 text-sm" />
-                          <select value={newUser.role} onChange={e => setNewUser({...newUser, role: e.target.value as any})} className="w-full px-4 py-2 rounded-lg border border-slate-200 text-sm">
-                            <option value="Viewer">Viewer</option>
-                            <option value="Editor">Editor</option>
-                            <option value="SuperAdmin">Super Admin</option>
-                          </select>
-                          <button type="submit" className="w-full btn-primary">Create User</button>
+                        <form onSubmit={editingAdmin ? updateAdminUser : addAdminUser} className="card p-6 space-y-4 sticky top-24">
+                          <h3 className="font-bold flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2">
+                              {editingAdmin ? <Pencil size={18} /> : <Plus size={18} />} 
+                              {editingAdmin ? 'Edit Admin' : 'Add Admin User'}
+                            </div>
+                            {editingAdmin && (
+                              <button type="button" onClick={() => setEditingAdmin(null)} className="text-xs text-red-500 hover:underline">Cancel</button>
+                            )}
+                          </h3>
+                          <div className="space-y-4">
+                            <div className="space-y-1">
+                              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Email Address</label>
+                              <input 
+                                type="email" 
+                                placeholder="example@gmail.com" 
+                                required 
+                                disabled={!!editingAdmin}
+                                value={editingAdmin ? editingAdmin.email : newUser.email} 
+                                onChange={e => editingAdmin ? setEditingAdmin({...editingAdmin, email: e.target.value}) : setNewUser({...newUser, email: e.target.value})} 
+                                className="w-full px-4 py-2 rounded-lg border border-slate-200 text-sm focus:ring-2 focus:ring-emerald-500 outline-none disabled:bg-slate-50" 
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Access Role</label>
+                              <select 
+                                value={editingAdmin ? editingAdmin.role : newUser.role} 
+                                onChange={e => editingAdmin ? setEditingAdmin({...editingAdmin, role: e.target.value as any}) : setNewUser({...newUser, role: e.target.value as any})} 
+                                className="w-full px-4 py-2 rounded-lg border border-slate-200 text-sm focus:ring-2 focus:ring-emerald-500 outline-none"
+                              >
+                                <option value="Viewer">Viewer (Read Only)</option>
+                                <option value="Editor">Editor (Manage Content)</option>
+                                <option value="SuperAdmin">SuperAdmin (Full Control)</option>
+                              </select>
+                            </div>
+                            <div className="space-y-1">
+                              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Internal Note</label>
+                              <input 
+                                type="text" 
+                                placeholder="e.g. Ward Secretary" 
+                                value={editingAdmin ? editingAdmin.note : newUser.note} 
+                                onChange={e => editingAdmin ? setEditingAdmin({...editingAdmin, note: e.target.value}) : setNewUser({...newUser, note: e.target.value})} 
+                                className="w-full px-4 py-2 rounded-lg border border-slate-200 text-sm focus:ring-2 focus:ring-emerald-500 outline-none" 
+                              />
+                            </div>
+                          </div>
+                          <button type="submit" className="w-full btn-primary py-3 flex items-center justify-center gap-2 shadow-lg">
+                            {editingAdmin ? <CheckCircle2 size={18} /> : <UserPlus size={18} />}
+                            {editingAdmin ? 'Update Access' : 'Whitelist User'}
+                          </button>
                         </form>
                       </div>
-                      <div className="lg:col-span-2 card overflow-hidden">
-                        <table className="w-full text-left">
-                          <thead>
-                            <tr className="text-xs uppercase tracking-wider text-slate-400 font-bold border-b border-slate-100">
-                              <th className="px-6 py-4">Username</th>
-                              <th className="px-6 py-4">Role</th>
-                              <th className="px-6 py-4">Created</th>
-                              <th className="px-6 py-4">Actions</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-slate-100">
-                            {adminUsers.map(user => (
-                              <tr key={user.id}>
-                                <td className="px-6 py-4 font-bold">{user.username}</td>
-                                <td className="px-6 py-4">
-                                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
-                                    user.role === 'SuperAdmin' ? 'bg-purple-100 text-purple-700' : 
-                                    user.role === 'Editor' ? 'bg-blue-100 text-blue-700' : 
-                                    'bg-slate-100 text-slate-700'
-                                  }`}>
-                                    {user.role}
-                                  </span>
-                                </td>
-                                <td className="px-6 py-4 text-xs text-slate-500">{(user as any).created_at}</td>
-                                <td className="px-6 py-4">
-                                  {user.username !== 'admin' && (
-                                    <button onClick={() => setDeleteConfirm({ id: user.id, type: 'user' })} className="text-red-600 hover:text-red-700">
-                                      <Trash2 size={16} />
-                                    </button>
-                                  )}
-                                </td>
+                      <div className="lg:col-span-2 space-y-4">
+                        <div className="card overflow-hidden">
+                          <table className="w-full text-left">
+                            <thead className="bg-slate-50 border-b border-slate-100">
+                              <tr>
+                                <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Administrator</th>
+                                <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Role</th>
+                                <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Actions</th>
                               </tr>
-                            ))}
-                          </tbody>
-                        </table>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                              {adminUsers.length === 0 ? (
+                                <tr>
+                                  <td colSpan={3} className="px-6 py-12 text-center text-slate-400 font-medium">No whitelisted administrators yet.</td>
+                                </tr>
+                              ) : (
+                                adminUsers.map((user) => (
+                                  <tr key={user.id} className="hover:bg-slate-50 transition-colors group">
+                                    <td className="px-6 py-4">
+                                      <div className="flex items-center gap-3">
+                                        <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-400">
+                                          <ShieldCheck size={20} />
+                                        </div>
+                                        <div>
+                                          <p className="text-sm font-bold text-slate-800">{user.email}</p>
+                                          <p className="text-[10px] font-medium text-slate-400 uppercase tracking-tight">{user.note || 'No notes'}</p>
+                                        </div>
+                                      </div>
+                                    </td>
+                                    <td className="px-6 py-4">
+                                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-widest ${
+                                        user.role === 'SuperAdmin' ? 'bg-purple-100 text-purple-700' : 
+                                        user.role === 'Editor' ? 'bg-emerald-100 text-emerald-700' : 
+                                        'bg-slate-100 text-slate-700'
+                                      }`}>
+                                        {user.role}
+                                      </span>
+                                    </td>
+                                    <td className="px-6 py-4 text-right">
+                                      <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <button onClick={() => setEditingAdmin(user)} className="p-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors">
+                                          <Pencil size={16} />
+                                        </button>
+                                        <button 
+                                          onClick={() => setDeleteConfirm({ id: user.id, type: 'user' })} 
+                                          className="p-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition-colors"
+                                          disabled={user.email === 'hmonowar32@gmail.com'}
+                                        >
+                                          <Trash2 size={16} />
+                                        </button>
+                                      </div>
+                                    </td>
+                                  </tr>
+                                ))
+                              )}
+                            </tbody>
+                          </table>
+                        </div>
                       </div>
                     </div>
                   )}
@@ -3198,6 +3560,9 @@ export default function App() {
             <span className="text-white font-bold">Ward 29 DNCC</span>
           </div>
           <p className="text-sm">© {new Date().getFullYear()} Ward 29, Mohammadpur. All rights reserved.</p>
+          <div className="mt-2 text-[10px] uppercase font-black tracking-widest opacity-40">
+            Developed by: <a href="https://facebook.com/@hmonowar32" target="_blank" rel="noopener noreferrer" className="hover:text-emerald-400 transition-colors">Mohd Monowar Hossain</a>
+          </div>
           <div className="flex justify-center gap-6 text-xs font-bold uppercase tracking-widest">
             <button onClick={() => setActiveTab('privacy')} className="hover:text-white transition-colors">{t.nav.privacy}</button>
             <button onClick={() => setActiveTab('terms')} className="hover:text-white transition-colors">{t.nav.terms}</button>
