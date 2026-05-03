@@ -173,7 +173,7 @@ interface EventItem {
 
 interface AdminUser {
   id: string | number;
-  username: string;
+  email: string;
   role: 'Viewer' | 'Editor' | 'SuperAdmin';
 }
 
@@ -211,6 +211,12 @@ export default function App() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const t = translations[lang];
 
+  // RBAC Helpers
+  const isSuperAdmin = adminUser?.role === 'SuperAdmin';
+  const canEdit = adminUser?.role === 'SuperAdmin' || adminUser?.role === 'Editor';
+  const canManageAdmins = adminUser?.role === 'SuperAdmin';
+  const isAdminViewer = adminUser?.role === 'Viewer';
+
   // Voter State
   const [nid, setNid] = useState('');
   const [dob, setDob] = useState('');
@@ -244,7 +250,7 @@ export default function App() {
   const [adminUser, setAdminUser] = useState<any | null>(null);
   const [isAdminReady, setIsAdminReady] = useState(false);
   const [adminLoginError, setAdminLoginError] = useState('');
-  const [adminSubTab, setAdminSubTab] = useState<'volunteers' | 'complaints' | 'news' | 'gallery' | 'events' | 'users' | 'councilor' | 'voters' | 'council-members'>('volunteers');
+  const [adminSubTab, setAdminSubTab] = useState<'volunteers' | 'complaints' | 'news' | 'gallery' | 'events' | 'users' | 'councilor' | 'voters' | 'council-members' | 'overview'>('overview');
   const [volunteers, setVolunteers] = useState<Volunteer[]>([]);
   const [adminComplaints, setAdminComplaints] = useState<Complaint[]>([]);
   const [news, setNews] = useState<NewsItem[]>([]);
@@ -2254,52 +2260,131 @@ export default function App() {
                   )}
                 </div>
               ) : (
-                <div className="flex flex-col lg:flex-row gap-8 min-h-[600px]">
+                <div className="flex flex-col lg:flex-row gap-8 min-h-[700px]">
                   {/* Admin Sidebar */}
-                  <aside className="lg:w-64 flex-shrink-0">
-                    <div className="card p-4 sticky top-24 space-y-2">
-                      <div className="px-4 py-3 mb-4 border-b border-slate-100">
-                        <h2 className="text-lg font-bold flex items-center gap-2">
+                  <aside className="lg:w-72 flex-shrink-0 animate-in slide-in-from-left duration-500">
+                    <div className="card p-4 sticky top-24 space-y-6 overflow-hidden">
+                      <div className="px-4 py-3 border-b border-slate-100 -mx-4 -mt-4 bg-slate-50/50">
+                        <h2 className="text-lg font-black text-slate-800 flex items-center gap-2">
                           <LayoutDashboard size={20} className="text-emerald-600" /> 
                           {t.admin.dashboard}
                         </h2>
-                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mt-1">
-                          Logged in as {adminUser.role}
-                        </p>
+                        <div className="mt-2 flex items-center gap-2">
+                          <span className={`text-[10px] px-2 py-0.5 rounded-full font-black uppercase tracking-widest ${
+                            isSuperAdmin ? 'bg-purple-100 text-purple-700' : 
+                            isEditor ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-700'
+                          }`}>
+                            {adminUser.role}
+                          </span>
+                        </div>
                       </div>
                       
-                      <nav className="space-y-1">
-                        {[
-                          { id: 'volunteers', icon: UserPlus, label: t.admin.volunteers },
-                          { id: 'complaints', icon: MessageSquare, label: t.admin.complaints },
-                          { id: 'news', icon: Newspaper, label: t.nav.news },
-                          { id: 'events', icon: Clock, label: t.nav.events },
-                          { id: 'gallery', icon: ImageIcon, label: t.nav.gallery },
-                          ...(adminUser.role === 'SuperAdmin' ? [
-                            { id: 'councilor', icon: ShieldCheck, label: t.admin.councilor },
-                            { id: 'council-members', icon: Users, label: t.admin.councilMembers },
-                            { id: 'voters', icon: UserCheck, label: t.admin.voters },
-                            { id: 'users', icon: ShieldCheck, label: t.admin.users }
-                          ] : [])
-                        ].map(tab => (
+                      <nav className="space-y-6">
+                        {/* Overview Section */}
+                        <div className="space-y-1">
+                          <p className="px-4 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-2">General</p>
                           <button
-                            key={tab.id}
-                            onClick={() => setAdminSubTab(tab.id as any)}
-                            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all ${
-                              adminSubTab === tab.id 
-                                ? 'bg-emerald-50 text-emerald-700 shadow-sm border border-emerald-100' 
-                                : 'text-slate-500 hover:bg-slate-50 hover:text-slate-700'
+                            onClick={() => setAdminSubTab('overview')}
+                            className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-bold transition-all ${
+                              adminSubTab === 'overview' 
+                                ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-200' 
+                                : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
                             }`}
                           >
-                            <tab.icon size={18} /> {tab.label}
+                            <LayoutDashboard size={18} /> Overview
                           </button>
-                        ))}
+                        </div>
+
+                        {/* Citizens Section */}
+                        <div className="space-y-1">
+                          <p className="px-4 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-2">Citizens</p>
+                          {[
+                            { id: 'voters', icon: UserCheck, label: t.admin.voters },
+                            { id: 'volunteers', icon: UserPlus, label: t.admin.volunteers },
+                            { id: 'complaints', icon: MessageSquare, label: t.admin.complaints },
+                          ].map(tab => (
+                            <button
+                              key={tab.id}
+                              onClick={() => setAdminSubTab(tab.id as any)}
+                              className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-bold transition-all ${
+                                adminSubTab === tab.id 
+                                  ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-200' 
+                                  : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
+                              }`}
+                            >
+                              <tab.icon size={18} /> {tab.label}
+                            </button>
+                          ))}
+                        </div>
+
+                        {/* Content Section */}
+                        <div className="space-y-1">
+                          <p className="px-4 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-2">Content</p>
+                          {[
+                            { id: 'news', icon: Newspaper, label: t.nav.news },
+                            { id: 'events', icon: Clock, label: t.nav.events },
+                            { id: 'gallery', icon: ImageIcon, label: t.nav.gallery },
+                          ].map(tab => (
+                            <button
+                              key={tab.id}
+                              onClick={() => setAdminSubTab(tab.id as any)}
+                              className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-bold transition-all ${
+                                adminSubTab === tab.id 
+                                  ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-200' 
+                                  : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
+                              }`}
+                            >
+                              <tab.icon size={18} /> {tab.label}
+                            </button>
+                          ))}
+                        </div>
+
+                        {/* Organization Section */}
+                        <div className="space-y-1">
+                          <p className="px-4 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-2">Organization</p>
+                          {[
+                            { id: 'councilor', icon: ShieldCheck, label: t.admin.councilor },
+                            { id: 'council-members', icon: Users, label: t.admin.councilMembers },
+                          ].map(tab => (
+                            <button
+                              key={tab.id}
+                              onClick={() => setAdminSubTab(tab.id as any)}
+                              className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-bold transition-all ${
+                                adminSubTab === tab.id 
+                                  ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-200' 
+                                  : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
+                              }`}
+                            >
+                              <tab.icon size={18} /> {tab.label}
+                            </button>
+                          ))}
+                        </div>
+
+                        {/* System Section */}
+                        {canManageAdmins && (
+                          <div className="space-y-1">
+                            <p className="px-4 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-2">System</p>
+                            <button
+                              onClick={() => setAdminSubTab('users')}
+                              className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-bold transition-all ${
+                                adminSubTab === 'users' 
+                                  ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-200' 
+                                  : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
+                              }`}
+                            >
+                              <Shield size={18} /> {t.admin.users}
+                            </button>
+                          </div>
+                        )}
                       </nav>
 
-                      <div className="pt-4 mt-4 border-t border-slate-100">
+                      <div className="pt-4 mt-8 border-t border-slate-100 flex flex-col gap-2">
+                        <div className="px-4 text-xs font-medium text-slate-400 mb-2 truncate">
+                          {adminUser.email}
+                        </div>
                         <button 
                           onClick={() => setAdminUser(null)}
-                          className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold text-slate-400 hover:text-red-600 hover:bg-red-50 transition-all"
+                          className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-bold text-slate-400 hover:text-red-600 hover:bg-red-50 transition-all"
                         >
                           <X size={18} /> {t.admin.logout}
                         </button>
@@ -2309,14 +2394,91 @@ export default function App() {
 
                   {/* Admin Content Area */}
                   <div className="flex-grow space-y-6">
-                    <div className="flex justify-between items-center">
-                      <h3 className="text-xl font-bold text-slate-800 capitalize">
-                        {adminSubTab.replace('_', ' ')}
-                      </h3>
-                      <div className="flex items-center gap-2 text-xs font-bold text-slate-400">
-                        <Clock size={14} /> {new Date().toLocaleDateString()}
+                    <div className="flex justify-between items-end pb-4 border-b border-slate-100">
+                      <div>
+                        <h3 className="text-3xl font-black text-slate-900 capitalize tracking-tight">
+                          {adminSubTab.replace('-', ' ')}
+                        </h3>
+                        <p className="text-sm font-medium text-slate-400 mt-1">
+                          Manage Ward 29's {adminSubTab.replace('-', ' ')} section
+                        </p>
+                      </div>
+                      <div className="hidden md:flex items-center gap-4 bg-slate-50 px-4 py-2 rounded-2xl border border-slate-100">
+                        <div className="text-right">
+                          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{lang === 'bn' ? 'তারিখ' : 'Today'}</p>
+                          <p className="text-sm font-black text-slate-700">{new Date().toLocaleDateString()}</p>
+                        </div>
+                        <div className="w-px h-8 bg-slate-200" />
+                        <Clock size={24} className="text-emerald-500" />
                       </div>
                     </div>
+
+                    {adminSubTab === 'overview' && (
+                      <div className="space-y-8 animate-in fade-in zoom-in duration-500">
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                          {[
+                            { label: t.admin.voters, value: adminVoters.length, icon: UserCheck, color: 'bg-blue-50 text-blue-600' },
+                            { label: t.admin.volunteers, value: volunteers.length, icon: UserPlus, color: 'bg-emerald-50 text-emerald-600' },
+                            { label: t.admin.complaints, value: adminComplaints.length, icon: MessageSquare, color: 'bg-amber-50 text-amber-600' },
+                            { label: t.nav.news, value: news.length, icon: Newspaper, color: 'bg-slate-50 text-slate-600' },
+                          ].map((stat, i) => (
+                            <div key={i} className="card p-6 flex items-center justify-between group hover:shadow-2xl transition-all duration-500 hover:-translate-y-1">
+                              <div className="space-y-1">
+                                <p className="text-xs font-black text-slate-400 uppercase tracking-widest">{stat.label}</p>
+                                <p className="text-3xl font-black text-slate-800">{stat.value}</p>
+                              </div>
+                              <div className={`w-14 h-14 ${stat.color} rounded-2xl flex items-center justify-center transition-transform group-hover:scale-110 group-hover:rotate-6`}>
+                                <stat.icon size={28} />
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                          <div className="card p-8 space-y-6">
+                            <h4 className="text-xl font-black text-slate-800 flex items-center gap-3">
+                              <Clock size={24} className="text-emerald-600" /> Recent Activities
+                            </h4>
+                            <div className="space-y-6">
+                              {/* Mock recent activities based on existing data */}
+                              {[...adminComplaints, ...volunteers].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).slice(0, 5).map((item: any, i) => (
+                                <div key={i} className="flex gap-4">
+                                  <div className={`w-10 h-10 rounded-full flex-shrink-0 flex items-center justify-center ${item.tracking_id ? 'bg-amber-50 text-amber-600' : 'bg-emerald-50 text-emerald-600'}`}>
+                                    {item.tracking_id ? <MessageSquare size={18} /> : <UserPlus size={18} />}
+                                  </div>
+                                  <div className="space-y-1">
+                                    <p className="text-sm font-bold text-slate-800">
+                                      {item.tracking_id ? `New Complaint: ${item.subject}` : `Volunteer Application: ${item.name}`}
+                                    </p>
+                                    <p className="text-xs text-slate-500 font-medium">{new Date(item.created_at).toLocaleString()}</p>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+
+                          <div className="card p-8 space-y-6 bg-slate-900 text-white relative overflow-hidden">
+                            <div className="absolute -right-20 -bottom-20 w-64 h-64 bg-emerald-500/10 rounded-full blur-3xl" />
+                            <h4 className="text-xl font-black flex items-center gap-3">
+                              <Shield size={24} className="text-emerald-400" /> Administrative Notice
+                            </h4>
+                            <div className="space-y-4 relative z-10">
+                              <p className="text-slate-300 text-sm leading-relaxed">
+                                Welcome to the Ward 29 Digital Hub. You are logged in with <span className="text-emerald-400 font-bold uppercase">{adminUser.role}</span> privileges. 
+                                Please handle citizen data with strict confidentiality.
+                              </p>
+                              <div className="p-4 bg-white/5 border border-white/10 rounded-2xl flex items-center gap-4">
+                                <Info size={24} className="text-emerald-400" />
+                                <div className="text-xs">
+                                  <p className="font-bold">Privacy Policy Enforcement</p>
+                                  <p className="text-slate-400">All administrative actions are logged for security auditing purposes.</p>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
 
                     {adminSubTab === 'volunteers' && (
                     <div className="space-y-4">
@@ -2442,7 +2604,7 @@ export default function App() {
                                   </span>
                                 </td>
                                 <td className="px-6 py-4">
-                                  {v.status === 'pending' && adminUser.role !== 'Viewer' && (
+                                  {v.status === 'pending' && canEdit && (
                                     <button 
                                       onClick={() => approveVolunteer(v.id)}
                                       className="text-xs font-bold text-emerald-600 hover:text-emerald-700"
@@ -2689,7 +2851,7 @@ export default function App() {
 
                    {adminSubTab === 'news' && (
                     <div className="grid lg:grid-cols-3 gap-8">
-                      {adminUser.role !== 'Viewer' && (
+                      {canEdit && (
                         <div className="lg:col-span-1">
                           <form onSubmit={addNews} className="card p-6 space-y-4 sticky top-24">
                             <h3 className="font-bold flex items-center justify-between gap-2">
@@ -2726,7 +2888,7 @@ export default function App() {
                                 >
                                   <Share2 size={14} /> Share
                                 </button>
-                                {adminUser.role !== 'Viewer' && (
+                                {canEdit && (
                                   <div className="flex items-center gap-2">
                                     <button onClick={() => setEditingNews(item)} className="text-emerald-600 hover:text-emerald-700 p-1"><Pencil size={14} /></button>
                                     <button onClick={() => setDeleteConfirm({ id: item.id, type: 'news' })} className="text-red-600 hover:text-red-700 p-1"><Trash2 size={14} /></button>
@@ -2742,7 +2904,7 @@ export default function App() {
 
                    {adminSubTab === 'gallery' && (
                     <div className="grid lg:grid-cols-3 gap-8">
-                      {adminUser.role !== 'Viewer' && (
+                      {canEdit && (
                         <div className="lg:col-span-1">
                           <form onSubmit={addGallery} className="card p-6 space-y-4 sticky top-24">
                             <h3 className="font-bold flex items-center justify-between gap-2">
@@ -2774,7 +2936,7 @@ export default function App() {
                                 >
                                   <Share2 size={14} />
                                 </button>
-                                {adminUser.role !== 'Viewer' && (
+                                {canEdit && (
                                   <div className="flex items-center gap-2">
                                     <button onClick={() => setEditingGallery(item)} className="text-white bg-blue-600 p-2 rounded-lg hover:bg-blue-700 transition-colors">
                                       <Pencil size={14} />
@@ -2794,7 +2956,7 @@ export default function App() {
 
                    {adminSubTab === 'events' && (
                     <div className="grid lg:grid-cols-3 gap-8">
-                      {adminUser.role !== 'Viewer' && (
+                      {canEdit && (
                         <div className="lg:col-span-1">
                           <form onSubmit={addEvent} className="card p-6 space-y-4 sticky top-24">
                             <h3 className="font-bold flex items-center justify-between gap-2">
@@ -2828,7 +2990,7 @@ export default function App() {
                               <h4 className="font-bold">{event.title_bn}</h4>
                               <p className="text-xs text-slate-500 mt-1">{new Date(event.event_date).toLocaleDateString()} • {event.location_bn}</p>
                               <div className="flex items-center gap-2 mt-2">
-                                {adminUser.role !== 'Viewer' && (
+                                {canEdit && (
                                   <div className="flex items-center gap-2">
                                     <button onClick={() => setEditingEvent(event)} className="text-emerald-600 hover:text-emerald-700 p-1"><Pencil size={14} /></button>
                                     <button onClick={() => setDeleteConfirm({ id: event.id, type: 'event' })} className="text-red-600 hover:text-red-700 p-1"><Trash2 size={14} /></button>
@@ -2961,9 +3123,11 @@ export default function App() {
                         </div>
 
                         <div className="pt-4">
-                          <button type="submit" className="w-full btn-primary py-4 text-lg flex items-center justify-center gap-3">
-                            <CheckCircle2 size={24} /> Save Councilor Profile Changes
-                          </button>
+                          {canEdit && (
+                            <button type="submit" className="w-full btn-primary py-4 text-lg flex items-center justify-center gap-3">
+                              <CheckCircle2 size={24} /> Save Councilor Profile Changes
+                            </button>
+                          )}
                         </div>
                       </form>
                     </div>
@@ -2978,8 +3142,9 @@ export default function App() {
                       </div>
 
                       <div className="grid lg:grid-cols-3 gap-8">
-                        <div className="lg:col-span-1">
-                          <form onSubmit={editingVoter ? updateVoter : addVoter} className="card p-6 space-y-4 sticky top-24">
+                        {canEdit && (
+                          <div className="lg:col-span-1">
+                            <form onSubmit={editingVoter ? updateVoter : addVoter} className="card p-6 space-y-4 sticky top-24">
                             <h3 className="font-bold flex items-center justify-between gap-2">
                               <div className="flex items-center gap-2">
                                 <Plus size={18} /> {editingVoter ? 'Edit Voter' : 'Add New Voter'}
@@ -3013,6 +3178,7 @@ export default function App() {
                             </button>
                           </form>
                         </div>
+                      )}
 
                         <div className="lg:col-span-2 space-y-4">
                           <div className="card overflow-hidden">
@@ -3052,14 +3218,16 @@ export default function App() {
                                         <p className="text-[10px] font-bold text-slate-400">{v.dob}</p>
                                       </td>
                                       <td className="px-6 py-4 text-right">
-                                        <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                          <button onClick={() => setEditingVoter(v)} className="p-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100">
-                                            <Edit3 size={16} />
-                                          </button>
-                                          <button onClick={() => setDeleteConfirm({ id: v.id, type: 'voter' })} className="p-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-100">
-                                            <Trash2 size={16} />
-                                          </button>
-                                        </div>
+                                        {canEdit && (
+                                          <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                            <button onClick={() => setEditingVoter(v)} className="p-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100">
+                                              <Edit3 size={16} />
+                                            </button>
+                                            <button onClick={() => setDeleteConfirm({ id: v.id, type: 'voter' })} className="p-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-100">
+                                              <Trash2 size={16} />
+                                            </button>
+                                          </div>
+                                        )}
                                       </td>
                                     </tr>
                                   ))
@@ -3081,8 +3249,9 @@ export default function App() {
                       </div>
 
                       <div className="grid lg:grid-cols-3 gap-8">
-                        <div className="lg:col-span-1">
-                          <form onSubmit={addCouncilMember} className="card p-6 space-y-4 sticky top-24">
+                        {canEdit && (
+                          <div className="lg:col-span-1">
+                            <form onSubmit={addCouncilMember} className="card p-6 space-y-4 sticky top-24">
                             <h3 className="font-bold flex items-center gap-2">
                               <Plus size={18} /> Add Member
                             </h3>
@@ -3103,6 +3272,7 @@ export default function App() {
                             </button>
                           </form>
                         </div>
+                      )}
 
                         <div className="lg:col-span-2 grid md:grid-cols-2 gap-4">
                           {councilMembers.length === 0 ? (

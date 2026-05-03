@@ -1,14 +1,14 @@
 import express from "express";
 import { createServer as createViteServer } from "vite";
 import path from "path";
-import * as admin from "firebase-admin";
-import { initializeApp, getApp, getApps, App } from "firebase-admin/app";
-import { getFirestore, Firestore, FieldValue } from "firebase-admin/firestore";
+import { initializeApp, getApp, getApps } from "firebase-admin/app";
+import { getFirestore, FieldValue } from "firebase-admin/firestore";
+import type { Firestore } from "firebase-admin/firestore";
 import { readFileSync } from "fs";
 const firebaseConfig = JSON.parse(readFileSync(new URL("./firebase-applet-config.json", import.meta.url), "utf-8"));
 
 // Initialize Firebase Admin
-let app: App;
+let app: any;
 try {
   if (getApps().length === 0) {
     app = initializeApp({
@@ -23,7 +23,7 @@ try {
 }
 
 // Named database support
-let fs: Firestore;
+let fs: any;
 try {
   const dbId = (firebaseConfig as any).firestoreDatabaseId;
   fs = getFirestore(app, dbId || undefined);
