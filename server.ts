@@ -39,10 +39,10 @@ async function seedCouncilor() {
     if (!doc.exists) {
       console.log("Seeding default councilor profile...");
       await docRef.set({
-        name_en: "Md. Monowar Hossain",
-        name_bn: "মো: মনোয়ার হোসেন",
+        name_en: "Hafeez Md Ismail Hossain",
+        name_bn: "হাফেজ মোঃ ইসমাইল হোসাইন",
         career_en: "Dedicated Social Worker & Politician with a vision for digital transformation of Ward 29.",
-        career_bn: "ওয়ার্ড ২৯-এর ডিজিটাল রূপান্তরের স্বপ্নদ্রষ্টা, নিষ্ঠাবান সমাজসেবক ও রাজনীতিবিদ।",
+        career_bn: "ওয়ার্ড ২৯-এর ডিজিটাল রূপান্তরের স্বপ্নদ্রষ্টা, নিষ্ঠাবান সমাজসেবক ও রাজনীতিবিদ।",
         education_en: "Post Graduate in Social Sciences",
         education_bn: "স্নাতকোত্তর, সামাজিক বিজ্ঞান",
         social_service_en: "Founder of multiple youth development clubs and active participant in community welfare programs since 2005.",

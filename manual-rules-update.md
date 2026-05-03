@@ -1,3 +1,22 @@
+# Manual Firestore Rules Update Instructions
+
+Since we can't deploy rules via CLI due to permissions, here's how to update them manually:
+
+## Step 1: Open Firebase Console
+Go to: https://console.firebase.google.com/
+
+## Step 2: Select Your Project
+- Click on "ancient-ensign-474608-k8" 
+- Or use this direct link: https://console.firebase.google.com/project/ancient-ensign-474608-k8
+
+## Step 3: Navigate to Firestore Rules
+1. In the left menu, click "Firestore Database"
+2. Click on the "Rules" tab
+
+## Step 4: Replace the Rules
+Copy and paste the entire contents of `firestore.rules` file into the rules editor:
+
+```javascript
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -145,3 +164,13 @@ service cloud.firestore {
     }
   }
 }
+```
+
+## Step 5: Publish the Rules
+1. Click "Publish" button at the top
+2. Wait for the rules to be published (usually takes 1-2 minutes)
+
+## Step 6: Test
+After publishing, try adding news again in your application. The permission error should be resolved.
+
+⚠️ **IMPORTANT**: These rules allow all operations for development. Remember to re-enable proper authentication before going to production!

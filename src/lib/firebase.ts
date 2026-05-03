@@ -1,5 +1,5 @@
 import { initializeApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider, signInWithPopup, signOut } from 'firebase/auth';
+import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'firebase/auth';
 import { getFirestore, doc, getDocFromServer } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
 
@@ -8,8 +8,10 @@ export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
 
-// Standard login helper
+// Standard login helpers
 export const signInWithGoogle = () => signInWithPopup(auth, googleProvider);
+export const signInWithEmail = (email: string, password: string) => signInWithEmailAndPassword(auth, email, password);
+export const createAdminUser = (email: string, password: string) => createUserWithEmailAndPassword(auth, email, password);
 export const logout = () => signOut(auth);
 
 // Test connection
