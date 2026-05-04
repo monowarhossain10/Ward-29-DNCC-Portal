@@ -32,9 +32,15 @@ async function createTables() {
       email TEXT UNIQUE NOT NULL,
       password TEXT NOT NULL,
       role TEXT NOT NULL DEFAULT 'Viewer',
+      note TEXT DEFAULT '',
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )
   `);
+
+  const adminColumns = await db.all(`PRAGMA table_info(admins)`);
+  if (!adminColumns.some((column: any) => column.name === 'note')) {
+    await db.exec(`ALTER TABLE admins ADD COLUMN note TEXT DEFAULT ''`);
+  }
 
   // News table
   await db.exec(`
@@ -159,8 +165,8 @@ async function createTables() {
 
   // Insert default admin user if not exists
   await db.exec(`
-    INSERT OR IGNORE INTO admins (email, password, role) 
-    VALUES ('admin@ward29.com', 'Admin123!', 'SuperAdmin')
+    INSERT OR IGNORE INTO admins (email, password, role, note) 
+    VALUES ('admin@ward29.com', 'Admin123!', 'SuperAdmin', 'Default super admin')
   `);
 
   console.log('Database tables created successfully');

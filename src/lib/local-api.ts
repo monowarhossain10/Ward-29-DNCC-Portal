@@ -52,7 +52,14 @@ async function apiRequest(endpoint: string, options: RequestInit = {}) {
   });
 
   if (!response.ok) {
-    throw new Error(`API request failed: ${response.statusText}`);
+    let message = `API request failed: ${response.statusText}`;
+    try {
+      const errorData = await response.json();
+      message = errorData.error || errorData.message || message;
+    } catch {
+      // Ignore JSON parse failures and keep the default message.
+    }
+    throw new Error(message);
   }
 
   return response.json();
@@ -72,13 +79,20 @@ export const newsAPI = {
       }
     });
     
-    return fetch(`${API_BASE_URL}/news`, {
+    const response = await fetch(`${API_BASE_URL}/news`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${localAuth.getToken()}`
       },
       body: formData
-    }).then(res => res.json());
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || 'Failed to create news');
+    }
+
+    return response.json();
   },
 
   async update(id: string, data: any) {
@@ -89,13 +103,20 @@ export const newsAPI = {
       }
     });
     
-    return fetch(`${API_BASE_URL}/news/${id}`, {
+    const response = await fetch(`${API_BASE_URL}/news/${id}`, {
       method: 'PUT',
       headers: {
         Authorization: `Bearer ${localAuth.getToken()}`
       },
       body: formData
-    }).then(res => res.json());
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || 'Failed to update news');
+    }
+
+    return response.json();
   },
 
   async delete(id: string) {
@@ -159,13 +180,20 @@ export const eventsAPI = {
       }
     });
     
-    return fetch(`${API_BASE_URL}/events`, {
+    const response = await fetch(`${API_BASE_URL}/events`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${localAuth.getToken()}`
       },
       body: formData
-    }).then(res => res.json());
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || 'Failed to create event');
+    }
+
+    return response.json();
   },
 
   async update(id: string, data: any) {
@@ -176,13 +204,20 @@ export const eventsAPI = {
       }
     });
     
-    return fetch(`${API_BASE_URL}/events/${id}`, {
+    const response = await fetch(`${API_BASE_URL}/events/${id}`, {
       method: 'PUT',
       headers: {
         Authorization: `Bearer ${localAuth.getToken()}`
       },
       body: formData
-    }).then(res => res.json());
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || 'Failed to update event');
+    }
+
+    return response.json();
   },
 
   async delete(id: string) {
@@ -204,13 +239,44 @@ export const galleryAPI = {
       }
     });
     
-    return fetch(`${API_BASE_URL}/gallery`, {
+    const response = await fetch(`${API_BASE_URL}/gallery`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${localAuth.getToken()}`
       },
       body: formData
-    }).then(res => res.json());
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || 'Failed to create gallery item');
+    }
+
+    return response.json();
+  },
+
+  async update(id: string, data: any) {
+    const formData = new FormData();
+    Object.keys(data).forEach(key => {
+      if (data[key] !== null && data[key] !== undefined) {
+        formData.append(key, data[key]);
+      }
+    });
+
+    const response = await fetch(`${API_BASE_URL}/gallery/${id}`, {
+      method: 'PUT',
+      headers: {
+        Authorization: `Bearer ${localAuth.getToken()}`
+      },
+      body: formData
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || 'Failed to update gallery item');
+    }
+
+    return response.json();
   },
 
   async delete(id: string) {
@@ -265,6 +331,38 @@ export const councilMembersAPI = {
 export const councilorAPI = {
   async get() {
     return apiRequest('/councilor');
+  },
+
+  async update(data: any) {
+    return apiRequest('/councilor', {
+      method: 'PUT',
+      body: JSON.stringify(data)
+    });
+  }
+};
+
+// Admin users API
+export const adminUsersAPI = {
+  async getAll() {
+    return apiRequest('/admins');
+  },
+
+  async create(data: any) {
+    return apiRequest('/admins', {
+      method: 'POST',
+      body: JSON.stringify(data)
+    });
+  },
+
+  async update(id: string, data: any) {
+    return apiRequest(`/admins/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data)
+    });
+  },
+
+  async delete(id: string) {
+    return apiRequest(`/admins/${id}`, { method: 'DELETE' });
   }
 };
 

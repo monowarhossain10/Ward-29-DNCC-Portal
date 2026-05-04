@@ -87,7 +87,7 @@ router.get('/news', async (req, res) => {
 router.post('/news', authenticateToken, upload.single('image'), async (req: AuthenticatedRequest, res) => {
   try {
     const { title_en, title_bn, content_en, content_bn } = req.body;
-    const image = req.file ? `/uploads/${req.file.filename}` : null;
+    const image = req.file ? `/uploads/${req.file.filename}` : (req.body.image || null);
     
     const db = await getDatabase();
     const result = await db.run(
@@ -106,9 +106,12 @@ router.put('/news/:id', authenticateToken, upload.single('image'), async (req: A
   try {
     const { id } = req.params;
     const { title_en, title_bn, content_en, content_bn } = req.body;
-    const image = req.file ? `/uploads/${req.file.filename}` : req.body.existingImage;
-    
     const db = await getDatabase();
+    const current = await db.get('SELECT image FROM news WHERE id = ?', [id]);
+    const image = req.file
+      ? `/uploads/${req.file.filename}`
+      : (req.body.image || req.body.existingImage || current?.image || null);
+
     await db.run(
       'UPDATE news SET title_en = ?, title_bn = ?, content_en = ?, content_bn = ?, image = ? WHERE id = ?',
       [title_en, title_bn, content_en, content_bn, image, id]
@@ -186,13 +189,13 @@ router.get('/complaints', async (req, res) => {
 
 router.post('/complaints', async (req, res) => {
   try {
-    const { name, phone, subject, message } = req.body;
+    const { name, phone, subject, message, status, admin_note } = req.body;
     const tracking_id = 'COMP' + Date.now();
     
     const db = await getDatabase();
     const result = await db.run(
-      'INSERT INTO complaints (tracking_id, name, phone, subject, message) VALUES (?, ?, ?, ?, ?)',
-      [tracking_id, name, phone, subject, message]
+      'INSERT INTO complaints (tracking_id, name, phone, subject, message, status, admin_note) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      [tracking_id, name, phone, subject, message, status || 'Open', admin_note || null]
     );
 
     const complaint = await db.get('SELECT * FROM complaints WHERE id = ?', [result.lastID]);
@@ -233,7 +236,7 @@ router.get('/events', async (req, res) => {
 router.post('/events', authenticateToken, upload.single('image'), async (req: AuthenticatedRequest, res) => {
   try {
     const { title_en, title_bn, description_en, description_bn, event_date, location_en, location_bn } = req.body;
-    const image = req.file ? `/uploads/${req.file.filename}` : null;
+    const image = req.file ? `/uploads/${req.file.filename}` : (req.body.image || null);
     
     const db = await getDatabase();
     const result = await db.run(
@@ -245,6 +248,39 @@ router.post('/events', authenticateToken, upload.single('image'), async (req: Au
     res.json(event);
   } catch (error) {
     res.status(500).json({ error: 'Failed to create event' });
+  }
+});
+
+router.put('/events/:id', authenticateToken, upload.single('image'), async (req: AuthenticatedRequest, res) => {
+  try {
+    const { id } = req.params;
+    const { title_en, title_bn, description_en, description_bn, event_date, location_en, location_bn } = req.body;
+    const db = await getDatabase();
+    const current = await db.get('SELECT image FROM events WHERE id = ?', [id]);
+    const image = req.file
+      ? `/uploads/${req.file.filename}`
+      : (req.body.image || current?.image || null);
+
+    await db.run(
+      'UPDATE events SET title_en = ?, title_bn = ?, description_en = ?, description_bn = ?, event_date = ?, location_en = ?, location_bn = ?, image = ? WHERE id = ?',
+      [title_en, title_bn, description_en, description_bn, event_date, location_en, location_bn, image, id]
+    );
+
+    const event = await db.get('SELECT * FROM events WHERE id = ?', [id]);
+    res.json(event);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to update event' });
+  }
+});
+
+router.delete('/events/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const db = await getDatabase();
+    await db.run('DELETE FROM events WHERE id = ?', [id]);
+    res.json({ message: 'Event deleted successfully' });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to delete event' });
   }
 });
 
@@ -262,7 +298,7 @@ router.get('/gallery', async (req, res) => {
 router.post('/gallery', authenticateToken, upload.single('image'), async (req: AuthenticatedRequest, res) => {
   try {
     const { caption_en, caption_bn } = req.body;
-    const image = req.file ? `/uploads/${req.file.filename}` : null;
+    const image = req.file ? `/uploads/${req.file.filename}` : (req.body.image || null);
     
     const db = await getDatabase();
     const result = await db.run(
@@ -274,6 +310,39 @@ router.post('/gallery', authenticateToken, upload.single('image'), async (req: A
     res.json(galleryItem);
   } catch (error) {
     res.status(500).json({ error: 'Failed to create gallery item' });
+  }
+});
+
+router.put('/gallery/:id', authenticateToken, upload.single('image'), async (req: AuthenticatedRequest, res) => {
+  try {
+    const { id } = req.params;
+    const { caption_en, caption_bn } = req.body;
+    const db = await getDatabase();
+    const current = await db.get('SELECT image FROM gallery WHERE id = ?', [id]);
+    const image = req.file
+      ? `/uploads/${req.file.filename}`
+      : (req.body.image || current?.image || null);
+
+    await db.run(
+      'UPDATE gallery SET caption_en = ?, caption_bn = ?, image = ? WHERE id = ?',
+      [caption_en, caption_bn, image, id]
+    );
+
+    const galleryItem = await db.get('SELECT * FROM gallery WHERE id = ?', [id]);
+    res.json(galleryItem);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to update gallery item' });
+  }
+});
+
+router.delete('/gallery/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const db = await getDatabase();
+    await db.run('DELETE FROM gallery WHERE id = ?', [id]);
+    res.json({ message: 'Gallery item deleted successfully' });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to delete gallery item' });
   }
 });
 
@@ -309,6 +378,35 @@ router.post('/voters', authenticateToken, async (req, res) => {
   }
 });
 
+router.put('/voters/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const voterData = req.body;
+    const db = await getDatabase();
+
+    const assignments = Object.keys(voterData).map(key => `${key} = ?`).join(', ');
+    const values = [...Object.values(voterData), id];
+
+    await db.run(`UPDATE voters SET ${assignments} WHERE id = ?`, values);
+
+    const voter = await db.get('SELECT * FROM voters WHERE id = ?', [id]);
+    res.json(voter);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to update voter' });
+  }
+});
+
+router.delete('/voters/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const db = await getDatabase();
+    await db.run('DELETE FROM voters WHERE id = ?', [id]);
+    res.json({ message: 'Voter deleted successfully' });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to delete voter' });
+  }
+});
+
 // Council members routes
 router.get('/council-members', async (req, res) => {
   try {
@@ -333,6 +431,136 @@ router.post('/council-members', authenticateToken, async (req, res) => {
     res.json(member);
   } catch (error) {
     res.status(500).json({ error: 'Failed to create council member' });
+  }
+});
+
+router.delete('/council-members/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const db = await getDatabase();
+    await db.run('DELETE FROM council_members WHERE id = ?', [id]);
+    res.json({ message: 'Council member deleted successfully' });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to delete council member' });
+  }
+});
+
+router.put('/councilor', authenticateToken, async (req, res) => {
+  try {
+    const {
+      name_en,
+      name_bn,
+      career_en,
+      career_bn,
+      education_en,
+      education_bn,
+      social_service_en,
+      social_service_bn,
+      photo,
+      message_en,
+      message_bn
+    } = req.body;
+
+    const db = await getDatabase();
+    await db.run(
+      `INSERT INTO councilor_profile (
+        id, name_en, name_bn, career_en, career_bn, education_en, education_bn,
+        social_service_en, social_service_bn, photo, message_en, message_bn, last_updated
+      ) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+      ON CONFLICT(id) DO UPDATE SET
+        name_en = excluded.name_en,
+        name_bn = excluded.name_bn,
+        career_en = excluded.career_en,
+        career_bn = excluded.career_bn,
+        education_en = excluded.education_en,
+        education_bn = excluded.education_bn,
+        social_service_en = excluded.social_service_en,
+        social_service_bn = excluded.social_service_bn,
+        photo = excluded.photo,
+        message_en = excluded.message_en,
+        message_bn = excluded.message_bn,
+        last_updated = CURRENT_TIMESTAMP`,
+      [
+        name_en,
+        name_bn,
+        career_en,
+        career_bn,
+        education_en,
+        education_bn,
+        social_service_en,
+        social_service_bn,
+        photo,
+        message_en,
+        message_bn
+      ]
+    );
+
+    const councilor = await db.get('SELECT * FROM councilor_profile WHERE id = 1');
+    res.json(councilor);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to update councilor profile' });
+  }
+});
+
+router.get('/admins', authenticateToken, async (req, res) => {
+  try {
+    const db = await getDatabase();
+    const admins = await db.all('SELECT id, email, role, COALESCE(note, \'\') AS note, created_at FROM admins ORDER BY created_at DESC');
+    res.json(admins);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch admin users' });
+  }
+});
+
+router.post('/admins', authenticateToken, async (req, res) => {
+  try {
+    const { email, role, note, password } = req.body;
+    if (!password || String(password).trim().length < 6) {
+      return res.status(400).json({ error: 'Password must be at least 6 characters long' });
+    }
+    const db = await getDatabase();
+    const result = await db.run(
+      'INSERT INTO admins (email, password, role, note) VALUES (?, ?, ?, ?)',
+      [email, password, role, note || '']
+    );
+
+    const admin = await db.get('SELECT id, email, role, COALESCE(note, \'\') AS note, created_at FROM admins WHERE id = ?', [result.lastID]);
+    res.json(admin);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to create admin user' });
+  }
+});
+
+router.put('/admins/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { role, note, password } = req.body;
+    const db = await getDatabase();
+    if (password && String(password).trim().length < 6) {
+      return res.status(400).json({ error: 'Password must be at least 6 characters long' });
+    }
+
+    if (password) {
+      await db.run('UPDATE admins SET role = ?, note = ?, password = ? WHERE id = ?', [role, note || '', password, id]);
+    } else {
+      await db.run('UPDATE admins SET role = ?, note = ? WHERE id = ?', [role, note || '', id]);
+    }
+
+    const admin = await db.get('SELECT id, email, role, COALESCE(note, \'\') AS note, created_at FROM admins WHERE id = ?', [id]);
+    res.json(admin);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to update admin user' });
+  }
+});
+
+router.delete('/admins/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const db = await getDatabase();
+    await db.run('DELETE FROM admins WHERE id = ?', [id]);
+    res.json({ message: 'Admin user deleted successfully' });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to delete admin user' });
   }
 });
 

@@ -2,6 +2,7 @@ export const translations = {
   en: {
     nav: {
       home: "Home",
+      councilor: "Councilor",
       services: "Citizen Services",
       voterSlip: "NID Verification",
       birthVerify: "Birth Record Verification",
@@ -16,7 +17,8 @@ export const translations = {
       contact: "Contact Us",
       about: "About Us",
       privacy: "Privacy Policy",
-      terms: "Terms of Service"
+      terms: "Terms of Service",
+      admin: "Admin"
     },
     hero: {
       title: "Ward 29, DNCC Portal",

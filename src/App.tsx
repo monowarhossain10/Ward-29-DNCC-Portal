@@ -56,6 +56,7 @@ import {
   votersAPI,
   councilMembersAPI,
   councilorAPI,
+  adminUsersAPI,
   voterAPI
 } from './lib/local-api';
 
@@ -203,6 +204,7 @@ export default function App() {
 
   // RBAC Helpers
   const isSuperAdmin = adminUser?.role === 'SuperAdmin';
+  const isEditor = adminUser?.role === 'Editor';
   const canEdit = adminUser?.role === 'SuperAdmin' || adminUser?.role === 'Editor';
   const canManageAdmins = adminUser?.role === 'SuperAdmin';
   const isAdminViewer = adminUser?.role === 'Viewer';
@@ -254,7 +256,7 @@ export default function App() {
   const [newEvent, setNewEvent] = useState({ title_en: '', title_bn: '', description_en: '', description_bn: '', event_date: '', location_en: '', location_bn: '', image: '' });
   const [editingEvent, setEditingEvent] = useState<EventItem | null>(null);
   const [editingComplaint, setEditingComplaint] = useState<{ id: number, status: string, admin_note: string } | null>(null);
-  const [newUser, setNewUser] = useState({ email: '', role: 'Editor' as const, note: '' });
+  const [newUser, setNewUser] = useState({ email: '', role: 'Editor' as const, note: '', password: '' });
   const [editingAdmin, setEditingAdmin] = useState<any | null>(null);
   const [newVoter, setNewVoter] = useState<Partial<Voter>>({ nid: '', dob: '', name_en: '', name_bn: '', father_name: '', mother_name: '', address: '', serial_no: '', polling_center_en: '', polling_center_bn: '', booth_no: '', photo: '' });
   const [editingVoter, setEditingVoter] = useState<Voter | null>(null);
@@ -687,7 +689,7 @@ export default function App() {
 
   const menuStructure = [
     { key: 'home', label: t.nav.home },
-    { key: 'councilor', label: t.nav.councilor },
+    { key: 'councilor', label: t.nav.councilor || 'Councilor' },
     { 
       label: t.nav.services,
       items: [
@@ -726,15 +728,16 @@ export default function App() {
 
   // Error handling function
   const handleFirestoreError = (error: any, operationType: string, path: string = '') => {
+    const currentUser = localAuth.getCurrentUser();
     const errInfo = {
       error: error.message || 'Unknown error occurred',
       operationType: operationType as OperationType,
       path: path || null,
-      authInfo: auth.currentUser ? {
-        userId: auth.currentUser.uid,
-        email: auth.currentUser.email,
-        emailVerified: auth.currentUser.emailVerified,
-        isAnonymous: auth.currentUser.isAnonymous,
+      authInfo: currentUser ? {
+        userId: currentUser.id,
+        email: currentUser.email,
+        emailVerified: true,
+        isAnonymous: false,
       } : {
         userId: null,
         email: null,
@@ -782,6 +785,8 @@ export default function App() {
         const result = await localAuth.login(adminEmail, adminPassword);
         setAdminUser(result.user);
         setActiveTab('admin');
+        // Fetch admin data after successful login
+        await fetchAdminData();
         // Clear form fields on successful login
         setAdminEmail('');
         setAdminPassword('');
@@ -804,6 +809,7 @@ export default function App() {
 
   const fetchAdminData = async () => {
     try {
+      const currentAdmin = adminUser || localAuth.getCurrentUser();
       // Fetch all data using local API
       const [gallery, news, events, councilMembers, volunteers, complaints, voters] = await Promise.all([
         galleryAPI.getAll(),
@@ -822,6 +828,15 @@ export default function App() {
       setVolunteers(volunteers);
       setAdminComplaints(complaints);
       setAdminVoters(voters);
+
+      if (currentAdmin) {
+        try {
+          const admins = await adminUsersAPI.getAll();
+          setAdminUsers(admins);
+        } catch (err) {
+          console.error("Admin users fetch error:", err);
+        }
+      }
     } catch (err) {
       console.error("Admin data fetch error:", err);
       showToast('Failed to fetch admin data', 'error');
@@ -1049,13 +1064,12 @@ export default function App() {
   const handleVolunteerReg = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      await addDoc(collection(db, 'volunteers'), {
+      await volunteersAPI.create({
         name: volName,
         phone: volPhone,
         email: volEmail,
         photo: volPhoto,
-        status: 'pending',
-        created_at: serverTimestamp()
+        status: 'pending'
       });
       setVolRegSuccess(true);
       setVolName(''); setVolPhone(''); setVolEmail(''); setVolPhoto(null);
@@ -1099,17 +1113,15 @@ export default function App() {
         ai_reply = lang === 'bn' ? "আপনার অভিযোগটি গ্রহণ করা হয়েছে। আমাদের টিম শীঘ্রই এটি পর্যালোচনা করবে।" : "Your complaint has been received. Our team will review it shortly.";
       }
 
-      await addDoc(collection(db, 'complaints'), {
-        tracking_id,
+      const complaint = await complaintsAPI.create({
         name: compName,
         phone: compPhone,
         subject: compSub,
         message: compMsg,
         status: 'Open',
-        admin_note: `[AI Assistant]: ${ai_reply}`,
-        created_at: serverTimestamp()
+        admin_note: `[AI Assistant]: ${ai_reply}`
       });
-      setCompTracking(tracking_id);
+      setCompTracking(complaint.tracking_id || tracking_id);
       setCompName(''); setCompPhone(''); setCompSub(''); setCompMsg('');
       showToast(lang === 'bn' ? 'অভিযোগ জমা হয়েছে!' : 'Complaint submitted!');
     } catch (err) {
@@ -1123,10 +1135,10 @@ export default function App() {
     setTrackError('');
     setTrackedComplaint(null);
     try {
-      const q = query(collection(db, 'complaints'), where('tracking_id', '==', trackId));
-      const snap = await getDocs(q);
-      if (!snap.empty) {
-        setTrackedComplaint({ id: snap.docs[0].id, ...snap.docs[0].data() } as any);
+      const complaints = await complaintsAPI.getAll();
+      const complaint = complaints.find((item: Complaint) => item.tracking_id === trackId);
+      if (complaint) {
+        setTrackedComplaint(complaint);
       } else {
         setTrackError(lang === 'bn' ? 'অভিযোগ পাওয়া যায়নি।' : "Complaint not found with this ID.");
       }
@@ -1137,19 +1149,12 @@ export default function App() {
   };
 
   const enhancedVolunteerSearch = async () => {
-    // Client-side filtering on the already fetched 'volunteers' state
-    // In a real app with 10k+ entries, we'd use Firestore queries
     try {
-      let q = query(collection(db, 'volunteers'));
-      if (advVolSearch.phone) q = query(q, where('phone', '==', advVolSearch.phone));
-      // Firestore limited in multi-field 'where' without composite indexes
-      // For now we'll do basic query and then filter in client if needed
-      const snap = await getDocs(q);
-      const results = snap.docs.map(d => ({ id: d.id, ...d.data() } as any));
-      
-      const filtered = results.filter((v: any) => {
+      const results = await volunteersAPI.getAll();
+      const filtered = results.filter((v: Volunteer) => {
+        const matchesPhone = !advVolSearch.phone || v.phone === advVolSearch.phone;
         const matchesQuery = !advVolSearch.query || v.name.toLowerCase().includes(advVolSearch.query.toLowerCase());
-        return matchesQuery;
+        return matchesPhone && matchesQuery;
       });
       setVolunteers(filtered);
     } catch (err) { console.error(err); }
@@ -1157,18 +1162,14 @@ export default function App() {
 
   const enhancedComplaintSearch = async () => {
     try {
-      let q = query(collection(db, 'complaints'));
-      if (advCompSearch.phone) q = query(q, where('phone', '==', advCompSearch.phone));
-      if (advCompSearch.status) q = query(q, where('status', '==', advCompSearch.status));
-      
-      const snap = await getDocs(q);
-      const results = snap.docs.map(d => ({ id: d.id, ...d.data() } as any));
-      
-      const filtered = results.filter((c: any) => {
+      const results = await complaintsAPI.getAll();
+      const filtered = results.filter((c: Complaint) => {
+        const matchesPhone = !advCompSearch.phone || c.phone === advCompSearch.phone;
+        const matchesStatus = !advCompSearch.status || c.status === advCompSearch.status;
         const matchesQuery = !advCompSearch.query || 
           c.subject.toLowerCase().includes(advCompSearch.query.toLowerCase()) ||
           c.message.toLowerCase().includes(advCompSearch.query.toLowerCase());
-        return matchesQuery;
+        return matchesPhone && matchesStatus && matchesQuery;
       });
       setAdminComplaints(filtered);
     } catch (err) { console.error(err); }
@@ -1178,10 +1179,7 @@ export default function App() {
     e.preventDefault();
     if (!adminUser) return;
     try {
-      await addDoc(collection(db, 'council_members'), {
-        ...newCouncilMember,
-        created_at: serverTimestamp()
-      });
+      await councilMembersAPI.create(newCouncilMember);
       setNewCouncilMember({ name_en: '', name_bn: '', position_en: '', position_bn: '', phone: '', email: '', photo: '' });
       fetchAdminData();
       showToast(lang === 'bn' ? 'সদস্য যোগ করা হয়েছে' : 'Member added successfully');
@@ -1194,7 +1192,7 @@ export default function App() {
   const deleteCouncilMember = async (id: string) => {
     if (!adminUser) return;
     try {
-      await deleteDoc(doc(db, 'council_members', id));
+      await councilMembersAPI.delete(id);
       setDeleteConfirm(null);
       fetchAdminData();
       showToast(lang === 'bn' ? 'সদস্য মুছে ফেলা হয়েছে' : 'Member deleted successfully');
@@ -1208,10 +1206,7 @@ export default function App() {
     e.preventDefault();
     if (!adminUser) return;
     try {
-      await addDoc(collection(db, 'voters'), {
-        ...newVoter,
-        created_at: serverTimestamp()
-      });
+      await votersAPI.create(newVoter);
       setNewVoter({ nid: '', dob: '', name_en: '', name_bn: '', father_name: '', mother_name: '', address: '', serial_no: '', polling_center_en: '', polling_center_bn: '', booth_no: '', photo: '' });
       fetchAdminData();
       showToast(lang === 'bn' ? 'ভোটার যোগ করা হয়েছে' : 'Voter added successfully');
@@ -1224,7 +1219,7 @@ export default function App() {
   const deleteVoter = async (id: string) => {
     if (!adminUser) return;
     try {
-      await deleteDoc(doc(db, 'voters', id));
+      await votersAPI.delete(id);
       setDeleteConfirm(null);
       fetchAdminData();
       showToast(lang === 'bn' ? 'ভোটার মুছে ফেলা হয়েছে' : 'Voter deleted successfully');
@@ -1239,7 +1234,7 @@ export default function App() {
     if (!adminUser || !editingVoter) return;
     try {
       const { id, ...data } = editingVoter;
-      await updateDoc(doc(db, 'voters', id.toString()), data);
+      await votersAPI.update(id.toString(), data);
       setEditingVoter(null);
       fetchAdminData();
       showToast(lang === 'bn' ? 'ভোটার তথ্য আপডেট করা হয়েছে' : 'Voter information updated');
@@ -1253,10 +1248,7 @@ export default function App() {
     e.preventDefault();
     if (!adminUser) return;
     try {
-      await addDoc(collection(db, 'events'), {
-        ...newEvent,
-        created_at: serverTimestamp()
-      });
+      await eventsAPI.create(newEvent);
       setNewEvent({ title_en: '', title_bn: '', description_en: '', description_bn: '', event_date: '', location_en: '', location_bn: '', image: '' });
       fetchAdminData();
       showToast(lang === 'bn' ? 'ইভেন্ট তৈরি করা হয়েছে' : 'Event created successfully');
@@ -1271,7 +1263,7 @@ export default function App() {
     if (!adminUser || !editingEvent) return;
     try {
       const { id, ...data } = editingEvent;
-      await updateDoc(doc(db, 'events', id.toString()), data);
+      await eventsAPI.update(id.toString(), data);
       setEditingEvent(null);
       fetchAdminData();
       showToast(lang === 'bn' ? 'ইভেন্ট আপডেট করা হয়েছে' : 'Event updated successfully');
@@ -1284,7 +1276,7 @@ export default function App() {
   const deleteEvent = async (id: string) => {
     if (!adminUser) return;
     try {
-      await deleteDoc(doc(db, 'events', id));
+      await eventsAPI.delete(id);
       setDeleteConfirm(null);
       fetchAdminData();
       showToast(lang === 'bn' ? 'ইভেন্ট মুছে ফেলা হয়েছে' : 'Event deleted');
@@ -1297,7 +1289,7 @@ export default function App() {
   const approveVolunteer = async (id: string) => {
     if (!adminUser) return;
     try {
-      await updateDoc(doc(db, 'volunteers', id), { status: 'approved' });
+      await volunteersAPI.update(id, { status: 'approved' });
       fetchAdminData();
       showToast(lang === 'bn' ? 'স্বেচ্ছাসেবক অনুমোদিত' : 'Volunteer approved');
     } catch (err) {
@@ -1335,7 +1327,7 @@ export default function App() {
     if (!adminUser || !editingComplaint) return;
     try {
       const { id, status, admin_note } = editingComplaint;
-      await updateDoc(doc(db, 'complaints', id.toString()), { status, admin_note });
+      await complaintsAPI.update(id.toString(), { status, admin_note });
       setEditingComplaint(null);
       fetchAdminData();
       showToast(lang === 'bn' ? 'অভিযোগ আপডেট করা হয়েছে' : 'Complaint updated');
@@ -1349,24 +1341,9 @@ export default function App() {
     e.preventDefault();
     if (!adminUser) return;
     try {
-      console.log('Adding news:', newNews);
-      
-      // Add to Firestore
-      const docRef = await addDoc(collection(db, 'news'), {
-        ...newNews,
-        created_at: serverTimestamp()
-      });
-      
-      // Add to local state immediately
-      const newNewsItem = {
-        id: docRef.id,
-        ...newNews,
-        created_at: serverTimestamp()
-      };
-      
-      console.log('New news item:', newNewsItem);
-      setNews(prev => [newNewsItem, ...prev]);
+      await newsAPI.create(newNews);
       setNewNews({ title_en: '', title_bn: '', content_en: '', content_bn: '', image: '' });
+      fetchAdminData();
       showToast(lang === 'bn' ? 'সংবাদ যোগ করা হয়েছে' : 'News added successfully');
     } catch (err) {
       console.error(err);
@@ -1377,7 +1354,7 @@ export default function App() {
   const deleteNews = async (id: string) => {
     if (!adminUser) return;
     try {
-      await deleteDoc(doc(db, 'news', id));
+      await newsAPI.delete(id);
       setDeleteConfirm(null);
       fetchAdminData();
       showToast(lang === 'bn' ? 'সংবাদ মুছে ফেলা হয়েছে' : 'News deleted successfully');
@@ -1392,7 +1369,7 @@ export default function App() {
     if (!adminUser || !editingNews) return;
     try {
       const { id, ...data } = editingNews;
-      await updateDoc(doc(db, 'news', id.toString()), data);
+      await newsAPI.update(id.toString(), data);
       setEditingNews(null);
       fetchAdminData();
       showToast(lang === 'bn' ? 'সংবাদ আপডেট করা হয়েছে' : 'News updated successfully');
@@ -1406,10 +1383,7 @@ export default function App() {
     e.preventDefault();
     if (!adminUser) return;
     try {
-      await addDoc(collection(db, 'gallery'), {
-        ...newGallery,
-        created_at: serverTimestamp()
-      });
+      await galleryAPI.create(newGallery);
       setNewGallery({ caption_en: '', caption_bn: '', image: '' });
       fetchAdminData();
       showToast(lang === 'bn' ? 'গ্যালারি আইটেম যোগ করা হয়েছে' : 'Gallery item added successfully');
@@ -1422,7 +1396,7 @@ export default function App() {
   const deleteGallery = async (id: string) => {
     if (!adminUser) return;
     try {
-      await deleteDoc(doc(db, 'gallery', id));
+      await galleryAPI.delete(id);
       setDeleteConfirm(null);
       fetchAdminData();
       showToast(lang === 'bn' ? 'গ্যালারি আইটেম মুছে ফেলা হয়েছে' : 'Gallery item deleted successfully');
@@ -1437,7 +1411,7 @@ export default function App() {
     if (!adminUser || !editingGallery) return;
     try {
       const { id, ...data } = editingGallery;
-      await updateDoc(doc(db, 'gallery', id.toString()), data);
+      await galleryAPI.update(id.toString(), data);
       setEditingGallery(null);
       fetchAdminData();
       showToast(lang === 'bn' ? 'গ্যালারি আইটেম আপডেট করা হয়েছে' : 'Gallery item updated successfully');
@@ -1451,10 +1425,12 @@ export default function App() {
     e.preventDefault();
     if (!adminUser || !editCouncilor) return;
     try {
-      await setDoc(doc(db, 'settings', 'councilor'), {
+      const councilor = await councilorAPI.update({
         ...editCouncilor,
         last_updated: new Date().toISOString()
-      }, { merge: true });
+      });
+      setCouncilorProfile(councilor);
+      setEditCouncilor(councilor);
       showToast(lang === 'bn' ? 'কাউন্সিলর প্রোফাইল আপডেট করা হয়েছে' : 'Councilor profile updated successfully');
     } catch (err) {
       console.error(err);
@@ -1466,14 +1442,8 @@ export default function App() {
     e.preventDefault();
     if (!adminUser) return;
     try {
-      const adminId = newUser.email; 
-      await setDoc(doc(db, 'admins', adminId), {
-        email: newUser.email,
-        role: newUser.role,
-        note: newUser.note,
-        created_at: serverTimestamp()
-      });
-      setNewUser({ email: '', role: 'Editor', note: '' });
+      await adminUsersAPI.create(newUser);
+      setNewUser({ email: '', role: 'Editor', note: '', password: '' });
       fetchAdminData();
       showToast(lang === 'bn' ? 'অ্যাডমিন যোগ করা হয়েছে' : 'Admin user added successfully');
     } catch (err) {
@@ -1485,7 +1455,7 @@ export default function App() {
   const deleteAdminUser = async (id: string) => {
     if (!adminUser) return;
     try {
-      await deleteDoc(doc(db, 'admins', id));
+      await adminUsersAPI.delete(id);
       showToast(lang === 'bn' ? 'অ্যাডমিন মুছে ফেলা হয়েছে' : 'Admin user removed');
       fetchAdminData();
     } catch (err) {
@@ -1498,8 +1468,9 @@ export default function App() {
     e.preventDefault();
     if (!adminUser || !editingAdmin) return;
     try {
-      const { id, ...data } = editingAdmin;
-      await updateDoc(doc(db, 'admins', id), data);
+      const { id, password, ...data } = editingAdmin;
+      const payload = password ? { ...data, password } : data;
+      await adminUsersAPI.update(id, payload);
       setEditingAdmin(null);
       fetchAdminData();
       showToast(lang === 'bn' ? 'অ্যাডমিন আপডেট করা হয়েছে' : 'Admin updated successfully');
@@ -3152,7 +3123,9 @@ export default function App() {
                             last_updated: new Date().toISOString()
                           };
                           try {
-                            await setDoc(doc(db, 'settings', 'councilor'), initial);
+                            const councilor = await councilorAPI.update(initial);
+                            setCouncilorProfile(councilor);
+                            setEditCouncilor(councilor);
                             showToast(lang === 'bn' ? 'কাউন্সিলর প্রোফাইল তৈরি করা হয়েছে' : 'Councilor profile initialized');
                           } catch (err) {
                             console.error(err);
@@ -3489,10 +3462,27 @@ export default function App() {
                                 className="w-full px-4 py-2 rounded-lg border border-slate-200 text-sm focus:ring-2 focus:ring-emerald-500 outline-none" 
                               />
                             </div>
+                            <div className="space-y-1">
+                              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
+                                {editingAdmin ? 'New Password' : 'Password'}
+                              </label>
+                              <input
+                                type="password"
+                                placeholder={editingAdmin ? 'Leave blank to keep current password' : 'Minimum 6 characters'}
+                                value={editingAdmin ? (editingAdmin.password || '') : newUser.password}
+                                onChange={e => editingAdmin ? setEditingAdmin({...editingAdmin, password: e.target.value}) : setNewUser({...newUser, password: e.target.value})}
+                                className="w-full px-4 py-2 rounded-lg border border-slate-200 text-sm focus:ring-2 focus:ring-emerald-500 outline-none"
+                                required={!editingAdmin}
+                                minLength={6}
+                              />
+                              <p className="text-[10px] text-slate-400 font-medium ml-1">
+                                {editingAdmin ? 'Use this field to reset the user password.' : 'Set the password for this new admin user.'}
+                              </p>
+                            </div>
                           </div>
                           <button type="submit" className="w-full btn-primary py-3 flex items-center justify-center gap-2 shadow-lg">
                             {editingAdmin ? <CheckCircle2 size={18} /> : <UserPlus size={18} />}
-                            {editingAdmin ? 'Update Access' : 'Whitelist User'}
+                            {editingAdmin ? 'Update Access' : 'Create Admin User'}
                           </button>
                         </form>
                       </div>
@@ -3536,7 +3526,7 @@ export default function App() {
                                     </td>
                                     <td className="px-6 py-4 text-right">
                                       <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                        <button onClick={() => setEditingAdmin(user)} className="p-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors">
+                                        <button onClick={() => setEditingAdmin({ ...user, password: '' })} className="p-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors">
                                           <Pencil size={16} />
                                         </button>
                                         <button 
@@ -3863,7 +3853,7 @@ export default function App() {
             <button onClick={() => setActiveTab('about')} className="hover:text-white transition-colors">{t.nav.about}</button>
             <button onClick={() => setActiveTab('admin')} className="p-2 -m-2 opacity-20 hover:opacity-100 transition-opacity flex items-center gap-1 group">
               <ShieldCheck size={14} className="text-emerald-500 group-hover:scale-110 transition-transform" />
-              <span className="text-[10px]">{t.nav.admin}</span>
+              <span className="text-[10px]">{t.nav.admin || 'Admin'}</span>
             </button>
           </div>
         </div>
